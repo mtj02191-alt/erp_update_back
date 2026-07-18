@@ -1,0 +1,473 @@
+{
+  "super_admin": {
+    "super_admin": true,
+    "accounts_and_finance": {
+      "create": true,
+      "list_view": true,
+      "view": true,
+      "update": true,
+      "delete": true,
+      "reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": true
+      }
+    },
+    "procurements": {
+      "create": true,
+      "list_view": true,
+      "view": true,
+      "update": true,
+      "delete": true,
+      "reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": true
+      }
+    },
+    "store": {
+      "create": true,
+      "list_view": true,
+      "view": true,
+      "update": true,
+      "delete": true,
+      "reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": true
+      }
+    },
+    "program": {
+      "application_reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": true
+      },
+      "area_ration_reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": true
+      },
+      "education_reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": true
+      },
+      "financial_assistance_reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": true
+      },
+      "kasb_reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": true
+      },
+      "kasb_training_reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": true
+      },
+      "marriage_gifts_reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": true
+      },
+      "ration_reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": true
+      },
+      "sewing_machine_reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": true
+      },
+      "tree_plantation_reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": true
+      },
+      "water_reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": true
+      },
+      "wheel_chair_or_crutches_reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": true
+      }
+    },
+    "admin": {
+      "create": true,
+      "list_view": true,
+      "view": true,
+      "update": true,
+      "delete": true,
+      "dashboard": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": true
+      }
+    },
+    "permissions": {
+      "create": true,
+      "list_view": true,
+      "view": true,
+      "update": true,
+      "delete": true
+    },
+    "users": {
+      "create": true,
+      "list_view": true,
+      "view": true,
+      "update": true,
+      "delete": true,
+      "view_permissions": true,
+      "update_permissions": true
+    }
+  },
+  "accounts_manager": {
+    "accounts_and_finance": {
+      "create": true,
+      "list_view": true,
+      "view": true,
+      "update": true,
+      "delete": false,
+      "reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": false
+      }
+    },
+    "admin": {
+      "dashboard": {
+        "create": false,
+        "list_view": true,
+        "view": true,
+        "update": false,
+        "delete": false
+      }
+    },
+    "users": {
+      "view_permissions": true,
+      "update_permissions": false
+    }
+  },
+  "procurements_manager": {
+    "procurements": {
+      "create": true,
+      "list_view": true,
+      "view": true,
+      "update": true,
+      "delete": false,
+      "reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": false
+      }
+    },
+    "admin": {
+      "dashboard": {
+        "create": false,
+        "list_view": true,
+        "view": true,
+        "update": false,
+        "delete": false
+      }
+    },
+    "users": {
+      "view_permissions": true,
+      "update_permissions": false
+    }
+  },
+  "store_manager": {
+    "store": {
+      "create": true,
+      "list_view": true,
+      "view": true,
+      "update": true,
+      "delete": false,
+      "reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": false
+      }
+    },
+    "admin": {
+      "dashboard": {
+        "create": false,
+        "list_view": true,
+        "view": true,
+        "update": false,
+        "delete": false
+      }
+    },
+    "users": {
+      "view_permissions": true,
+      "update_permissions": false
+    }
+  },
+  "program_manager": {
+    "program": {
+      "application_reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": false
+      },
+      "area_ration_reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": false
+      },
+      "education_reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": false
+      },
+      "financial_assistance_reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": false
+      },
+      "kasb_reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": false
+      },
+      "kasb_training_reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": false
+      },
+      "marriage_gifts_reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": false
+      },
+      "ration_reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": false
+      },
+      "sewing_machine_reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": false
+      },
+      "tree_plantation_reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": false
+      },
+      "water_reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": false
+      },
+      "wheel_chair_or_crutches_reports": {
+        "create": true,
+        "list_view": true,
+        "view": true,
+        "update": true,
+        "delete": false
+      }
+    },
+    "admin": {
+      "dashboard": {
+        "create": false,
+        "list_view": true,
+        "view": true,
+        "update": false,
+        "delete": false
+      }
+    },
+    "users": {
+      "view_permissions": true,
+      "update_permissions": false
+    }
+  },
+  "viewer": {
+    "accounts_and_finance": {
+      "create": false,
+      "list_view": true,
+      "view": true,
+      "update": false,
+      "delete": false
+    },
+    "procurements": {
+      "create": false,
+      "list_view": true,
+      "view": true,
+      "update": false,
+      "delete": false
+    },
+    "store": {
+      "create": false,
+      "list_view": true,
+      "view": true,
+      "update": false,
+      "delete": false
+    },
+    "program": {
+      "application_reports": {
+        "create": false,
+        "list_view": true,
+        "view": true,
+        "update": false,
+        "delete": false
+      },
+      "area_ration_reports": {
+        "create": false,
+        "list_view": true,
+        "view": true,
+        "update": false,
+        "delete": false
+      },
+      "education_reports": {
+        "create": false,
+        "list_view": true,
+        "view": true,
+        "update": false,
+        "delete": false
+      },
+      "financial_assistance_reports": {
+        "create": false,
+        "list_view": true,
+        "view": true,
+        "update": false,
+        "delete": false
+      },
+      "kasb_reports": {
+        "create": false,
+        "list_view": true,
+        "view": true,
+        "update": false,
+        "delete": false
+      },
+      "kasb_training_reports": {
+        "create": false,
+        "list_view": true,
+        "view": true,
+        "update": false,
+        "delete": false
+      },
+      "marriage_gifts_reports": {
+        "create": false,
+        "list_view": true,
+        "view": true,
+        "update": false,
+        "delete": false
+      },
+      "ration_reports": {
+        "create": false,
+        "list_view": true,
+        "view": true,
+        "update": false,
+        "delete": false
+      },
+      "sewing_machine_reports": {
+        "create": false,
+        "list_view": true,
+        "view": true,
+        "update": false,
+        "delete": false
+      },
+      "tree_plantation_reports": {
+        "create": false,
+        "list_view": true,
+        "view": true,
+        "update": false,
+        "delete": false
+      },
+      "water_reports": {
+        "create": false,
+        "list_view": true,
+        "view": true,
+        "update": false,
+        "delete": false
+      },
+      "wheel_chair_or_crutches_reports": {
+        "create": false,
+        "list_view": true,
+        "view": true,
+        "update": false,
+        "delete": false
+      }
+    },
+    "admin": {
+      "dashboard": {
+        "create": false,
+        "list_view": true,
+        "view": true,
+        "update": false,
+        "delete": false
+      }
+    },
+    "users": {
+      "view_permissions": false,
+      "update_permissions": false
+    }
+  }
+} 

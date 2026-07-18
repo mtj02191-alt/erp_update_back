@@ -1,0 +1,5 @@
+// Permissions regarding user will be assigned to only on to super_admin or user for IT
+
+
+read_only_department_manager,
+read_only_super_admin

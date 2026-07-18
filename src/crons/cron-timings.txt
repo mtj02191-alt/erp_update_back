@@ -1,0 +1,25 @@
+=====================================
+  CRON JOB TIMINGS  (Asia/Karachi)
+=====================================
+
+DAILY
+-----
+  01:00 AM  — Donations Daily Report          (donations-report-cron.service.ts)
+  01:30 AM  — Meezan Donation Status Sync     (dms_crons/dms-crons.service.ts)
+  02:30 AM  — Dashboard Rebuild Nightly       (dashboard/dashboard-rebuild-cron.service.ts)
+  09:00 AM  — Gold & Silver Price Fetch       (zakat/gold_silver_price/gold-silver-price-cron.service.ts)
+
+WEEKLY
+------
+  Monday 09:00 AM  — Donations Weekly Report  (donations-report-cron.service.ts)
+
+MONTHLY
+-------
+  1st of month 09:00 AM  — Donations Monthly Report  (donations-report-cron.service.ts)
+
+MANUAL (API endpoints)
+----------------------
+  POST /dms-crons/sync-meezan       — One-time Meezan status sync   (dms_crons/dms-crons.controller.ts)
+  POST /donations-report/daily       — Manual daily report trigger   (donations_report/donations-report.controller.ts)
+  POST /donations-report/weekly      — Manual weekly report trigger  (donations_report/donations-report.controller.ts)
+  POST /donations-report/monthly     — Manual monthly report trigger (donations_report/donations-report.controller.ts)
