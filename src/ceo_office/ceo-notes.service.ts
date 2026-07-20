@@ -629,14 +629,13 @@ export class CeoNotesService {
       qb.andWhere("note.category = :category", { category });
     }
 
-    // Helper to fetch notes for a specific category (ignore global filter if showing all)
+    // Helper to fetch notes for a specific category
     const getNotesForCategory = async (cat: CeoNoteCategory) => {
-      const categoryQb = this.ceoNoteRepository.createQueryBuilder("note");
-      if (category) {
-        categoryQb.andWhere("note.category = :category", { category });
-      } else {
-        categoryQb.andWhere("note.category = :cat", { cat });
+      if (category && category !== cat) {
+        return [];
       }
+      const categoryQb = this.ceoNoteRepository.createQueryBuilder("note");
+      categoryQb.andWhere("note.category = :cat", { cat });
       return await categoryQb
         .limit(10)
         .orderBy("note.created_at", "DESC")
