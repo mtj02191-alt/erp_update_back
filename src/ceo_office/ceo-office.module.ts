@@ -7,6 +7,10 @@ import { ProjectCommandSheet } from "./entities/project-command-sheet.entity";
 import { Visitor } from "./entities/visitor.entity";
 import { Call } from "./entities/call.entity";
 import { WhatsAppMessage } from "./entities/whatsapp.entity";
+import { Meeting } from "./entities/meeting.entity";
+import { Approval } from "./entities/approval.entity";
+import { FollowUp } from "./entities/follow-up.entity";
+import { WaitingResponse } from "./entities/waiting-response.entity";
 import { Task } from "../tasks/entities/task.entity";
 import { User } from "../users/user.entity";
 import { CeoNotesService } from "./ceo-notes.service";
@@ -28,6 +32,10 @@ import { NotificationsModule } from "../notifications/notifications.module";
       Visitor,
       Call,
       WhatsAppMessage,
+      Meeting,
+      Approval,
+      FollowUp,
+      WaitingResponse,
       Task,
       User,
     ]),

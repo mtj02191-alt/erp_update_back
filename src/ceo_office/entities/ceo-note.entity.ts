@@ -1,3 +1,4 @@
+
 import {
   Entity,
   Column,
@@ -6,12 +7,20 @@ import {
   UpdateDateColumn,
   ManyToOne,
   ManyToMany,
+  OneToOne,
   JoinTable,
   JoinColumn,
-  OneToMany,
 } from "typeorm";
 import { User, Department } from "../../users/user.entity";
 import { Task } from "../../tasks/entities/task.entity";
+import { Meeting } from "./meeting.entity";
+import { Approval } from "./approval.entity";
+import { FollowUp } from "./follow-up.entity";
+import { WaitingResponse } from "./waiting-response.entity";
+import { ProjectCommandSheet } from "./project-command-sheet.entity";
+import { Visitor } from "./visitor.entity";
+import { Call } from "./call.entity";
+import { WhatsAppMessage } from "./whatsapp.entity";
 
 export enum CeoNoteCategory {
   TOP_PRIORITY = "top_priority",
@@ -124,257 +133,35 @@ export class CeoNote {
   @JoinTable()
   assigned_users: User[];
 
-  // ==================== FOLLOW-UP CATEGORY FIELDS ====================
-  @Column({ type: "varchar", length: 255, nullable: true })
-  follow_up_requested_from: string;
+  // ==================== CATEGORY ENTITY RELATIONS ====================
+  @OneToOne(() => Meeting, (meeting) => meeting.note, { eager: false, cascade: true })
+  @JoinColumn()
+  meeting_detail: Meeting;
 
-  @Column({ type: "date", nullable: true })
-  follow_up_requested_date: Date;
+  @OneToOne(() => Approval, (approval) => approval.note, { eager: false, cascade: true })
+  @JoinColumn()
+  approval_detail: Approval;
 
-  @Column({ type: "date", nullable: true })
-  follow_up_last_date: Date;
+  @OneToOne(() => FollowUp, (followUp) => followUp.note, { eager: false, cascade: true })
+  @JoinColumn()
+  follow_up_detail: FollowUp;
 
-  @Column({ type: "date", nullable: true })
-  follow_up_next_date: Date;
+  @OneToOne(() => WaitingResponse, (waitingResponse) => waitingResponse.note, { eager: false, cascade: true })
+  @JoinColumn()
+  waiting_response_detail: WaitingResponse;
 
-  @Column({ type: "text", nullable: true })
-  follow_up_current_response: string;
+  @OneToOne(() => ProjectCommandSheet, (pcs) => pcs.note, { eager: false, cascade: true })
+  @JoinColumn()
+  project_command_sheet_detail: ProjectCommandSheet;
 
-  @Column({ type: "text", nullable: true })
-  follow_up_remarks: string;
+  @OneToOne(() => Visitor, (visitor) => visitor.related_note, { eager: false, cascade: true })
+  visitor_detail: Visitor;
 
-  @Column({ type: "jsonb", nullable: true, default: () => "'[]'" })
-  follow_up_history: {
-    date: Date;
-    action: string;
-    remarks: string;
-  }[];
+  @OneToOne(() => Call, (call) => call.related_note, { eager: false, cascade: true })
+  call_detail: Call;
 
-  // ==================== MEETING CATEGORY FIELDS ====================
-  @Column({ type: "timestamp", nullable: true })
-  meeting_date: Date;
-
-  @Column({ type: "varchar", length: 255, nullable: true })
-  meeting_with: string;
-
-  @Column({ type: "varchar", length: 500, nullable: true })
-  meeting_subject: string;
-
-  @Column({ type: "jsonb", nullable: true, default: () => "'[]'" })
-  meeting_discussion_points: {
-    id: string;
-    content: string;
-  }[];
-
-  @Column({ type: "jsonb", nullable: true, default: () => "'[]'" })
-  meeting_decisions: {
-    id: string;
-    content: string;
-  }[];
-
-  @Column({ type: "jsonb", nullable: true, default: () => "'[]'" })
-  meeting_action_items: {
-    id: string;
-    content: string;
-    assigned_to?: string;
-    due_date?: Date;
-    status?: string;
-    related_task_id?: number;
-  }[];
-
-  // ==================== EMAILS & APPROVALS CATEGORY FIELDS ====================
-  @Column({ type: "varchar", length: 255, nullable: true })
-  approval_type: string;
-
-  @Column({ type: "varchar", length: 255, nullable: true })
-  approval_requested_by: string;
-
-  @Column({ type: "varchar", length: 500, nullable: true })
-  approval_subject: string;
-
-  @Column({ type: "varchar", length: 255, nullable: true })
-  approval_reference_number: string;
-
-  @Column({ type: "decimal", precision: 15, scale: 2, nullable: true })
-  approval_amount: number;
-
-  @Column({
-    type: "enum",
-    enum: ["pending", "approved", "rejected", "request_clarification"],
-    default: "pending",
-    nullable: true,
-  })
-  approval_decision:
-    | "pending"
-    | "approved"
-    | "rejected"
-    | "request_clarification";
-
-  @Column({ type: "text", nullable: true })
-  approval_decision_remarks: string;
-
-  // ==================== WAITING RESPONSE CATEGORY FIELDS ====================
-  @Column({ type: "varchar", length: 255, nullable: true })
-  waiting_response_requested_from: string;
-
-  @Column({ type: "date", nullable: true })
-  waiting_response_request_date: Date;
-
-  @Column({ type: "date", nullable: true })
-  waiting_response_expected_date: Date;
-
-  @Column({ type: "date", nullable: true })
-  waiting_response_last_reminder_date: Date;
-
-  @Column({
-    type: "enum",
-    enum: ["waiting_response", "reminder_sent", "received", "closed"],
-    default: "waiting_response",
-    nullable: true,
-  })
-  waiting_response_status:
-    | "waiting_response"
-    | "reminder_sent"
-    | "received"
-    | "closed";
-
-  @Column({ type: "text", nullable: true })
-  waiting_response_remarks: string;
-
-  @Column({ type: "jsonb", nullable: true, default: () => "'[]'" })
-  waiting_response_reminders: {
-    id: string;
-    date: Date;
-    notes: string;
-  }[];
-
-  // ==================== PROJECT COMMAND SHEETS CATEGORY FIELDS ====================
-  @Column({ type: "varchar", length: 500, nullable: true })
-  project_name: string;
-
-  @Column({ type: "text", nullable: true })
-  project_details: string;
-
-  @Column({ type: "text", nullable: true })
-  discussions: string;
-
-  @Column({ type: "text", nullable: true })
-  decisions: string;
-
-  @Column({ type: "text", nullable: true })
-  meeting_notes: string;
-
-  @Column({ type: "jsonb", nullable: true, default: () => "'[]'" })
-  pending_items: {
-    id: string;
-    text: string;
-    status?: string;
-  }[];
-
-  @Column({ type: "jsonb", nullable: true, default: () => "'[]'" })
-  action_items: {
-    id: string;
-    text: string;
-    assigned_to_id?: number;
-    due_date?: Date;
-    status?: string;
-    related_task_id?: number;
-  }[];
-
-  @Column({ type: "date", nullable: true })
-  start_date: Date;
-
-  @Column({ type: "date", nullable: true })
-  end_date: Date;
-
-  @Column({ type: "varchar", length: 50, nullable: true, default: "Pending" })
-  pcs_status: string;
-
-  @Column({ type: "text", nullable: true })
-  next_steps: string;
-
-  @Column({ type: "text", nullable: true })
-  results: string;
-
-  // ==================== VISITORS/CALLS/WHATSAPP CATEGORY FIELDS ====================
-  @Column({ type: "varchar", length: 50, nullable: true })
-  type: string;
-
-  // Visitor specific fields
-  @Column({ type: "varchar", length: 255, nullable: true })
-  visitor_name: string;
-
-  // Call specific fields
-  @Column({ type: "varchar", length: 255, nullable: true })
-  caller_name: string;
-
-  // WhatsApp specific fields
-  @Column({ type: "varchar", length: 255, nullable: true })
-  contact_name: string;
-
-  // Common fields for all three types
-  @Column({ type: "varchar", length: 255, nullable: true })
-  organization: string;
-
-  @Column({ type: "text", nullable: true })
-  purpose: string;
-
-  @Column({ type: "varchar", length: 255, nullable: true, name: "visitor_meeting_with" })
-  visitor_meeting_with: string;
-
-  @Column({ type: "varchar", length: 255, nullable: true, name: "visitor_department" })
-  visitor_department: string;
-
-  @Column({ type: "varchar", length: 50, nullable: true })
-  protocol_required: string;
-
-  @Column({ type: "varchar", length: 50, nullable: true })
-  expected_duration: string;
-
-  @Column({ type: "varchar", length: 50, nullable: true })
-  visitor_outcome: string;
-
-  @Column({ type: "varchar", length: 50, nullable: true })
-  phone_number: string;
-
-  @Column({ type: "text", nullable: true })
-  call_purpose: string;
-
-  @Column({ type: "text", nullable: true })
-  call_summary: string;
-
-  @Column({ type: "varchar", length: 10, nullable: true, default: "No" })
-  follow_up_required: string;
-
-  @Column({ type: "timestamp", nullable: true })
-  follow_up_date: Date;
-
-  @Column({ type: "varchar", length: 255, nullable: true })
-  assigned_to: string;
-
-  @Column({ type: "text", nullable: true })
-  message_summary: string;
-
-  @Column({ type: "text", nullable: true })
-  required_action: string;
-
-  @Column({ type: "varchar", length: 255, nullable: true })
-  attachment_url: string;
-
-  @Column({ type: "varchar", length: 50, nullable: true })
-  response_status: string;
-
-  @Column({ type: "timestamp", nullable: true })
-  visit_datetime: Date;
-
-  // ==================== EXISTING FIELDS ====================
-  @Column({ type: "jsonb", nullable: true })
-  approval_history: {
-    decision: "approved" | "rejected" | "clarification_requested";
-    remarks: string;
-    decision_date: Date;
-    decision_by_id: number;
-  }[];
+  @OneToOne(() => WhatsAppMessage, (whatsapp) => whatsapp.related_note, { eager: false, cascade: true })
+  whatsapp_detail: WhatsAppMessage;
 
   @CreateDateColumn({ type: "timestamp", default: () => "CURRENT_TIMESTAMP" })
   created_at: Date;

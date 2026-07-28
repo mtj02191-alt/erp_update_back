@@ -5,15 +5,23 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   ManyToOne,
+  OneToOne,
   JoinColumn,
 } from "typeorm";
 import { User } from "../../users/user.entity";
 import { Task } from "../../tasks/entities/task.entity";
+import { CeoNote } from "./ceo-note.entity";
 
 @Entity("project_command_sheets")
 export class ProjectCommandSheet {
   @PrimaryGeneratedColumn("increment")
   id: number;
+
+  @Column({ type: "int", nullable: true, unique: true })
+  note_id: number;
+
+  @OneToOne(() => CeoNote, (note) => note.project_command_sheet_detail, { onDelete: "CASCADE" })
+  note: CeoNote;
 
   @Column({ type: "varchar", length: 500, nullable: false })
   project_name: string;
