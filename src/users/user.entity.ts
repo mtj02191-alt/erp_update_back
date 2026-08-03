@@ -12,6 +12,8 @@ import { DonationBox } from "../dms/donation_box/entities/donation-box.entity";
 export enum UserRole {
   SUPER_ADMIN = "super_admin",
   ADMIN = "admin",
+  CEO = "ceo",
+  PA = "pa",
   USER = "user",
   MANAGER = "manager",
   ASSISTANT_MANAGER = "assistant_manager",

@@ -8,17 +8,21 @@ import {
   Delete,
   Query,
   UseGuards,
+  ParseIntPipe,
 } from "@nestjs/common";
 import { ProjectCommandSheetsService } from "./project-command-sheets.service";
 import { CreateProjectCommandSheetDto } from "./dto/create-project-command-sheet.dto";
 import { UpdateProjectCommandSheetDto } from "./dto/update-project-command-sheet.dto";
 import { ConvertToTaskDto } from "./dto/convert-to-task.dto";
 import { JwtGuard } from "../auth/jwt.guard";
+import { RolesGuard } from "../auth/guards/roles.guard";
+import { Roles } from "../auth/roles.decorator";
+import { UserRole } from "../users/user.entity";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { User } from "../users/user.entity";
 
 @Controller("project-command-sheets")
-@UseGuards(JwtGuard)
+@UseGuards(JwtGuard, RolesGuard)
 export class ProjectCommandSheetsController {
   constructor(
     private readonly projectCommandSheetsService: ProjectCommandSheetsService,
@@ -41,37 +45,38 @@ export class ProjectCommandSheetsController {
   }
 
   @Get(":id")
-  findOne(@Param("id") id: string) {
-    return this.projectCommandSheetsService.findOne(+id);
+  findOne(@Param("id", ParseIntPipe) id: number) {
+    return this.projectCommandSheetsService.findOne(id);
   }
 
   @Patch(":id")
   update(
-    @Param("id") id: string,
+    @Param("id", ParseIntPipe) id: number,
     @Body() updateProjectCommandSheetDto: UpdateProjectCommandSheetDto,
     @CurrentUser() currentUser: User,
   ) {
     return this.projectCommandSheetsService.update(
-      +id,
+      id,
       updateProjectCommandSheetDto,
       currentUser,
     );
   }
 
   @Delete(":id")
-  remove(@Param("id") id: string) {
-    return this.projectCommandSheetsService.remove(+id);
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.CEO, UserRole.PA)
+  remove(@Param("id", ParseIntPipe) id: number) {
+    return this.projectCommandSheetsService.remove(id);
   }
 
   @Post(":sheetId/action-items/:actionItemId/convert-to-task")
   convertActionItemToTask(
-    @Param("sheetId") sheetId: string,
+    @Param("sheetId", ParseIntPipe) sheetId: number,
     @Param("actionItemId") actionItemId: string,
     @Body() convertToTaskDto: ConvertToTaskDto,
     @CurrentUser() currentUser: User,
   ) {
     return this.projectCommandSheetsService.convertActionItemToTask(
-      +sheetId,
+      sheetId,
       actionItemId,
       convertToTaskDto,
       currentUser,
@@ -80,12 +85,12 @@ export class ProjectCommandSheetsController {
 
   @Post(":sheetId/convert-to-task")
   convertSheetToTask(
-    @Param("sheetId") sheetId: string,
+    @Param("sheetId", ParseIntPipe) sheetId: number,
     @Body() convertToTaskDto: ConvertToTaskDto,
     @CurrentUser() currentUser: User,
   ) {
     return this.projectCommandSheetsService.convertSheetToTask(
-      +sheetId,
+      sheetId,
       convertToTaskDto,
       currentUser,
     );

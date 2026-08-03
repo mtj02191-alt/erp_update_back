@@ -19,10 +19,10 @@ export class WhatsAppMessage {
   @Column({ type: "varchar", length: 50, nullable: false, default: "whatsapp" })
   type: string;
 
-  @Column({ type: "varchar", length: 255, nullable: false })
+  @Column({ type: "varchar", length: 255, nullable: true })
   contact_name: string;
 
-  @Column({ type: "varchar", length: 50, nullable: false })
+  @Column({ type: "varchar", length: 50, nullable: true })
   phone_number: string;
 
   @Column({ type: "text", nullable: true })

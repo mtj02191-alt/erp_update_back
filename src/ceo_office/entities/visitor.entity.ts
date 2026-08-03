@@ -25,7 +25,7 @@ export class Visitor {
   @Column({ type: "varchar", length: 255, nullable: true })
   organization: string;
 
-  @Column({ type: "text", nullable: false })
+  @Column({ type: "text", nullable: true })
   purpose: string;
 
   @Column({ type: "varchar", length: 255, nullable: true })

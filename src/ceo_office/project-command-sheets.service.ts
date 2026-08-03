@@ -6,6 +6,7 @@ import { CreateProjectCommandSheetDto } from "./dto/create-project-command-sheet
 import { UpdateProjectCommandSheetDto } from "./dto/update-project-command-sheet.dto";
 import { ConvertToTaskDto } from "./dto/convert-to-task.dto";
 import { User, Department } from "../users/user.entity";
+import { CeoNote } from "./entities/ceo-note.entity";
 import { TasksService } from "../tasks/tasks.service";
 import { CreateTaskDto } from "../tasks/dto/create-task.dto";
 import {
@@ -24,6 +25,8 @@ export class ProjectCommandSheetsService {
   constructor(
     @InjectRepository(ProjectCommandSheet)
     private readonly projectCommandSheetRepository: Repository<ProjectCommandSheet>,
+    @InjectRepository(CeoNote)
+    private readonly ceoNoteRepository: Repository<CeoNote>,
     @InjectRepository(Task)
     private readonly taskRepository: Repository<Task>,
     private readonly tasksService: TasksService,
@@ -102,11 +105,37 @@ export class ProjectCommandSheetsService {
   ) {
     const sheet = await this.findOne(id);
     Object.assign(sheet, updateProjectCommandSheetDto);
-    return await this.projectCommandSheetRepository.save(sheet);
+    const updatedSheet = await this.projectCommandSheetRepository.save(sheet);
+
+    // Sync key fields back to linked CeoNote if one exists
+    if (sheet.note_id) {
+      const note = await this.ceoNoteRepository.findOne({ where: { id: sheet.note_id } });
+      if (note) {
+        if (updateProjectCommandSheetDto.project_name) {
+          note.title = updateProjectCommandSheetDto.project_name;
+        }
+        if (updateProjectCommandSheetDto.project_details) {
+          note.details = updateProjectCommandSheetDto.project_details;
+        }
+        if ((updateProjectCommandSheetDto as any).status) {
+          note.status = (updateProjectCommandSheetDto as any).status;
+        }
+        await this.ceoNoteRepository.save(note);
+      }
+    }
+
+    return updatedSheet;
   }
 
   async remove(id: number) {
     const sheet = await this.findOne(id);
+
+    // Clear any CEO note relation before deleting the sheet.
+    await this.ceoNoteRepository.query(
+      `UPDATE ceo_notes SET project_command_sheet_detail_id = NULL WHERE project_command_sheet_detail_id = $1`,
+      [id],
+    );
+
     await this.projectCommandSheetRepository.remove(sheet);
     return { message: "Sheet deleted successfully" };
   }

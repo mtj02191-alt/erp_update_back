@@ -16,6 +16,14 @@ import { User } from "../users/user.entity";
 import { CeoNotesService } from "./ceo-notes.service";
 import { ProjectCommandSheetsService } from "./project-command-sheets.service";
 import { VisitorsService } from "./visitors.service";
+import { CeoNoteAuditService } from "./ceo-note-audit.service";
+import { CeoNoteCategoryService } from "./ceo-note-category.service";
+import { CeoNoteApprovalService } from "./ceo-note-approval.service";
+import { CeoNoteConversionService } from "./ceo-note-conversion.service";
+import { CeoNoteDashboardService } from "./ceo-note-dashboard.service";
+import { CeoNoteReportService } from "./ceo-note-report.service";
+import { CeoNoteCronService } from "./ceo-note-cron.service";
+import { CeoOfficeEventsListener } from "./ceo-office.events.listener";
 import { CeoNotesController } from "./ceo-notes.controller";
 import { ProjectCommandSheetsController } from "./project-command-sheets.controller";
 import { VisitorsController } from "./visitors.controller";
@@ -52,6 +60,18 @@ import { NotificationsModule } from "../notifications/notifications.module";
     ProjectCommandSheetsController,
     VisitorsController,
   ],
-  providers: [CeoNotesService, ProjectCommandSheetsService, VisitorsService],
+  providers: [
+    CeoNotesService,
+    ProjectCommandSheetsService,
+    VisitorsService,
+    CeoNoteAuditService,
+    CeoNoteCategoryService,
+    CeoNoteApprovalService,
+    CeoNoteConversionService,
+    CeoNoteDashboardService,
+    CeoNoteReportService,
+    CeoNoteCronService,
+    CeoOfficeEventsListener,
+  ],
 })
 export class CeoOfficeModule {}

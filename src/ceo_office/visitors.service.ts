@@ -143,59 +143,57 @@ export class VisitorsService {
       10
     );
 
-    // Fetch all three types with related_note relation
-    const [visitors, visitorsTotal] = await this.visitorRepository.findAndCount(
-      {
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-        order: { visit_datetime: "DESC" },
-        relations: ["related_note"],
-      },
-    );
-
-    const [calls, callsTotal] = await this.callRepository.findAndCount({
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-      order: { visit_datetime: "DESC" },
-      relations: ["related_note"],
-    });
-
-    const [whatsapps, whatsappsTotal] =
-      await this.whatsappRepository.findAndCount({
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-        order: { visit_datetime: "DESC" },
-        relations: ["related_note"],
-      });
-
-    // Combine all results
-    const all = [...visitors, ...calls, ...whatsapps];
-    // Sort by visit_datetime descending
-    all.sort(
-      (a, b) =>
-        new Date(b.visit_datetime).getTime() -
-        new Date(a.visit_datetime).getTime(),
-    );
-
-    // For each record, if related_task_id is null but related_note has related_task_id, use that
-    const processed = all.map(record => {
-      if (!record.related_task_id && record.related_note?.related_task_id) {
-        return {
-          ...record,
-          related_task_id: record.related_note.related_task_id
-        };
-      }
-      return record;
-    });
-
+    // Fetch totals first for correct pagination
+    const visitorsTotal = await this.visitorRepository.count();
+    const callsTotal = await this.callRepository.count();
+    const whatsappsTotal = await this.whatsappRepository.count();
     const total = visitorsTotal + callsTotal + whatsappsTotal;
 
+    if (pageSize === -1) {
+      // No pagination: fetch all
+      const [visitors, calls, whatsapps] = await Promise.all([
+        this.visitorRepository.find({ order: { visit_datetime: "DESC" }, relations: ["related_note"] }),
+        this.callRepository.find({ order: { visit_datetime: "DESC" }, relations: ["related_note"] }),
+        this.whatsappRepository.find({ order: { visit_datetime: "DESC" }, relations: ["related_note"] }),
+      ]);
+      const all = [...visitors, ...calls, ...whatsapps];
+      all.sort((a, b) => new Date(b.visit_datetime).getTime() - new Date(a.visit_datetime).getTime());
+      return { data: all, total, page, pageSize, totalPages: 1 };
+    }
+
+    const skip = (page - 1) * pageSize;
+
+    // Fetch enough from each table to cover the current page
+    const fetchLimit = skip + pageSize;
+    const [visitors, calls, whatsapps] = await Promise.all([
+      this.visitorRepository.find({
+        take: fetchLimit,
+        order: { visit_datetime: "DESC" },
+        relations: ["related_note"],
+      }),
+      this.callRepository.find({
+        take: fetchLimit,
+        order: { visit_datetime: "DESC" },
+        relations: ["related_note"],
+      }),
+      this.whatsappRepository.find({
+        take: fetchLimit,
+        order: { visit_datetime: "DESC" },
+        relations: ["related_note"],
+      }),
+    ]);
+
+    // Combine, sort, and slice for current page
+    const all = [...visitors, ...calls, ...whatsapps];
+    all.sort((a, b) => new Date(b.visit_datetime).getTime() - new Date(a.visit_datetime).getTime());
+    const paged = all.slice(skip, skip + pageSize);
+
     return {
-      data: processed,
+      data: paged,
       total,
       page,
       pageSize,
-      totalPages: pageSize === -1 ? 1 : Math.ceil(total / pageSize),
+      totalPages: Math.ceil(total / pageSize),
     };
   }
 
@@ -207,40 +205,44 @@ export class VisitorsService {
           where: { id },
           relations: ["created_by", "related_note", "related_task"],
         });
-        if (call) return call;
+        if (!call) throw new NotFoundException(`Call with ID ${id} not found`);
+        return { ...call, _type: "call" };
       }
       if (t === "whatsapp") {
         const whatsapp = await this.whatsappRepository.findOne({
           where: { id },
           relations: ["created_by", "related_note", "related_task"],
         });
-        if (whatsapp) return whatsapp;
+        if (!whatsapp) throw new NotFoundException(`WhatsApp with ID ${id} not found`);
+        return { ...whatsapp, _type: "whatsapp" };
       }
+      // Default: visitor
       const visitor = await this.visitorRepository.findOne({
         where: { id },
         relations: ["created_by", "related_note", "related_task"],
       });
-      if (visitor) return visitor;
+      if (!visitor) throw new NotFoundException(`Visitor with ID ${id} not found`);
+      return { ...visitor, _type: "visitor" };
     }
 
-    // If no type specified, try all
+    // If no type specified, try all (legacy behavior) but tag result
     let entity: any = await this.visitorRepository.findOne({
       where: { id },
       relations: ["created_by", "related_note", "related_task"],
     });
-    if (entity) return entity;
+    if (entity) return { ...entity, _type: "visitor" };
 
     entity = await this.callRepository.findOne({
       where: { id },
       relations: ["created_by", "related_note", "related_task"],
     });
-    if (entity) return entity;
+    if (entity) return { ...entity, _type: "call" };
 
     entity = await this.whatsappRepository.findOne({
       where: { id },
       relations: ["created_by", "related_note", "related_task"],
     });
-    if (entity) return entity;
+    if (entity) return { ...entity, _type: "whatsapp" };
 
     throw new NotFoundException(`Record with ID ${id} not found`);
   }

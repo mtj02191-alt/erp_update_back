@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, SelectQueryBuilder, Brackets, In } from "typeorm";
+import { Repository, SelectQueryBuilder, Brackets, In, DataSource } from "typeorm";
 import {
   CeoNote,
   CeoNoteCategory,
@@ -19,6 +19,9 @@ import { CreateCeoNoteDto } from "./dto/create-ceo-note.dto";
 import { UpdateCeoNoteDto } from "./dto/update-ceo-note.dto";
 import { ApproveNoteDto } from "./dto/approve-note.dto";
 import { ConvertToTaskDto } from "./dto/convert-to-task.dto";
+import { BulkApproveDto } from "./dto/bulk-approve.dto";
+import { BulkConvertToTaskDto } from "./dto/bulk-convert-to-task.dto";
+import { CeoNotesQueryDto } from "./dto/ceo-notes-query.dto";
 import { User } from "../users/user.entity";
 import { TasksService } from "../tasks/tasks.service";
 import { CreateTaskDto } from "../tasks/dto/create-task.dto";
@@ -34,6 +37,12 @@ import { VisitorsService } from "./visitors.service";
 import { ProjectCommandSheetsService } from "./project-command-sheets.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { NotificationType } from "../notifications/entities/notification.entity";
+import { CeoNoteAuditService } from "./ceo-note-audit.service";
+import { CeoNoteCategoryService } from "./ceo-note-category.service";
+import { CeoNoteApprovalService } from "./ceo-note-approval.service";
+import { CeoNoteConversionService } from "./ceo-note-conversion.service";
+import { CeoNoteDashboardService } from "./ceo-note-dashboard.service";
+import { CeoNoteReportService, ReportType } from "./ceo-note-report.service";
 
 @Injectable()
 export class CeoNotesService {
@@ -69,6 +78,13 @@ export class CeoNotesService {
     private readonly visitorsService: VisitorsService,
     private readonly projectCommandSheetsService: ProjectCommandSheetsService,
     private readonly notificationsService: NotificationsService,
+    private readonly dataSource: DataSource,
+    private readonly auditService: CeoNoteAuditService,
+    private readonly categoryService: CeoNoteCategoryService,
+    private readonly approvalService: CeoNoteApprovalService,
+    private readonly conversionService: CeoNoteConversionService,
+    private readonly dashboardService: CeoNoteDashboardService,
+    private readonly reportService: CeoNoteReportService,
   ) {}
 
   private async logAudit(
@@ -100,323 +116,57 @@ export class CeoNotesService {
   }
 
   private async setAssignedUsers(note: CeoNote, assignedUserIds?: (string | number)[]) {
-    console.log("=== setAssignedUsers ===");
-    console.log("assignedUserIds:", assignedUserIds);
-
-    const numericUserIds = assignedUserIds?.map(id => Number(id)).filter(id => !isNaN(id)) || [];
+    const numericUserIds = assignedUserIds?.map((id) => Number(id)).filter((id) => !isNaN(id)) || [];
 
     if (numericUserIds.length === 0) {
       note.assigned_users = [];
       note.assigned_user_ids = [];
-      console.log("No valid assignedUserIds, setting to empty arrays");
       return;
     }
 
-    console.log("Fetching users by ids:", numericUserIds);
     const users = await this.userRepository.findBy({ id: In(numericUserIds) });
-    console.log("Found users:", users);
-
     note.assigned_users = users;
-    note.assigned_user_ids = users.map(user => user.id);
-    console.log("Set note.assigned_users:", note.assigned_users);
-    console.log("Set note.assigned_user_ids:", note.assigned_user_ids);
-  }
-
-  private async createCategoryRecord(note: CeoNote, dto: any) {
-    const category = note.category;
-
-    if (category === CeoNoteCategory.MEETINGS) {
-      const meeting = this.meetingRepository.create({
-        note_id: note.id,
-        meeting_date: this.safelyParseDate(dto.meeting_date),
-        meeting_with: dto.meeting_with || null,
-        meeting_subject: dto.meeting_subject || null,
-        meeting_discussion_points: dto.meeting_discussion_points || [],
-        meeting_decisions: dto.meeting_decisions || [],
-        meeting_action_items: dto.meeting_action_items || [],
-      });
-      await this.meetingRepository.save(meeting);
-      note.meeting_detail = meeting;
-    } else if (category === CeoNoteCategory.EMAILS_AND_APPROVALS) {
-      const approval = this.approvalRepository.create({
-        note_id: note.id,
-        approval_type: dto.approval_type || null,
-        approval_requested_by: dto.approval_requested_by || null,
-        approval_subject: dto.approval_subject || null,
-        approval_reference_number: dto.approval_reference_number || null,
-        approval_amount: dto.approval_amount || null,
-        approval_decision: dto.approval_decision || "pending",
-        approval_decision_remarks: dto.approval_decision_remarks || null,
-        approval_history: dto.approval_history || null,
-      });
-      await this.approvalRepository.save(approval);
-      note.approval_detail = approval;
-    } else if (category === CeoNoteCategory.FOLLOW_UP) {
-      const followUp = this.followUpRepository.create({
-        note_id: note.id,
-        follow_up_requested_from: dto.follow_up_requested_from || null,
-        follow_up_requested_date: this.safelyParseDate(dto.follow_up_requested_date),
-        follow_up_last_date: this.safelyParseDate(dto.follow_up_last_date),
-        follow_up_next_date: this.safelyParseDate(dto.follow_up_next_date),
-        follow_up_current_response: dto.follow_up_current_response || null,
-        follow_up_remarks: dto.follow_up_remarks || null,
-        follow_up_history: dto.follow_up_history || [],
-      });
-      await this.followUpRepository.save(followUp);
-      note.follow_up_detail = followUp;
-    } else if (category === CeoNoteCategory.WAITING_RESPONSE) {
-      const waitingResponse = this.waitingResponseRepository.create({
-        note_id: note.id,
-        waiting_response_requested_from: dto.waiting_response_requested_from || null,
-        waiting_response_request_date: this.safelyParseDate(dto.waiting_response_request_date),
-        waiting_response_expected_date: this.safelyParseDate(dto.waiting_response_expected_date),
-        waiting_response_last_reminder_date: this.safelyParseDate(dto.waiting_response_last_reminder_date),
-        waiting_response_status: dto.waiting_response_status || "waiting_response",
-        waiting_response_remarks: dto.waiting_response_remarks || null,
-        waiting_response_reminders: dto.waiting_response_reminders || [],
-      });
-      await this.waitingResponseRepository.save(waitingResponse);
-      note.waiting_response_detail = waitingResponse;
-    } else if (category === CeoNoteCategory.PROJECT_COMMAND_SHEETS) {
-      const pcs = this.pcsRepository.create({
-        note_id: note.id,
-        project_name: dto.project_name || "",
-        project_details: dto.project_details || null,
-        discussions: dto.discussions || null,
-        decisions: dto.decisions || null,
-        meeting_notes: dto.meeting_notes || null,
-        pending_items: dto.pending_items || null,
-        action_items: dto.action_items || null,
-        next_steps: dto.next_steps || null,
-        results: dto.results || null,
-        start_date: this.safelyParseDate(dto.start_date),
-        end_date: this.safelyParseDate(dto.end_date),
-        status: dto.pcs_status || "Pending",
-        created_by_id: note.created_by_id,
-      });
-      await this.pcsRepository.save(pcs);
-      note.project_command_sheet_detail = pcs;
-    } else if (category === CeoNoteCategory.VISITORS) {
-      const visitor = this.visitorRepository.create({
-        type: "visitor",
-        visitor_name: note.related_person || "",
-        organization: "",
-        purpose: note.details || "",
-        meeting_with: "",
-        department: note.department || null,
-        protocol_required: "",
-        expected_duration: "",
-        visitor_outcome: "",
-        visit_datetime: note.date || new Date(),
-        related_note_id: note.id,
-        status: "Pending",
-        created_by_id: note.created_by_id,
-      });
-      await this.visitorRepository.save(visitor);
-      note.visitor_detail = visitor;
-    } else if (category === CeoNoteCategory.CALLS) {
-      const call = this.callRepository.create({
-        type: "call",
-        caller_name: note.related_person || "",
-        organization: "",
-        phone_number: "",
-        call_purpose: note.details || "",
-        call_summary: "",
-        follow_up_required: "No",
-        follow_up_date: note.due_date || null,
-        visit_datetime: note.date || new Date(),
-        related_note_id: note.id,
-        status: "Pending",
-        created_by_id: note.created_by_id,
-      });
-      await this.callRepository.save(call);
-      note.call_detail = call;
-    } else if (category === CeoNoteCategory.WHATSAPP) {
-      const whatsapp = this.whatsappRepository.create({
-        type: "whatsapp",
-        contact_name: note.related_person || "",
-        phone_number: "",
-        message_summary: note.details || "",
-        required_action: "",
-        attachment_url: "",
-        response_status: "",
-        visit_datetime: note.date || new Date(),
-        related_note_id: note.id,
-        status: "Pending Reply",
-        created_by_id: note.created_by_id,
-      });
-      await this.whatsappRepository.save(whatsapp);
-      note.whatsapp_detail = whatsapp;
-    }
-  }
-
-  private async updateCategoryRecord(note: CeoNote, dto: any) {
-    const category = note.category;
-
-    if (category === CeoNoteCategory.MEETINGS) {
-      let meeting = await this.meetingRepository.findOne({ where: { note_id: note.id } });
-      if (!meeting) {
-        meeting = this.meetingRepository.create({ note_id: note.id });
-      }
-      if (dto.meeting_date !== undefined) meeting.meeting_date = this.safelyParseDate(dto.meeting_date);
-      if (dto.meeting_with !== undefined) meeting.meeting_with = dto.meeting_with;
-      if (dto.meeting_subject !== undefined) meeting.meeting_subject = dto.meeting_subject;
-      if (dto.meeting_discussion_points !== undefined) meeting.meeting_discussion_points = dto.meeting_discussion_points;
-      if (dto.meeting_decisions !== undefined) meeting.meeting_decisions = dto.meeting_decisions;
-      if (dto.meeting_action_items !== undefined) meeting.meeting_action_items = dto.meeting_action_items;
-      await this.meetingRepository.save(meeting);
-      note.meeting_detail = meeting;
-    } else if (category === CeoNoteCategory.EMAILS_AND_APPROVALS) {
-      let approval = await this.approvalRepository.findOne({ where: { note_id: note.id } });
-      if (!approval) {
-        approval = this.approvalRepository.create({ note_id: note.id });
-      }
-      if (dto.approval_type !== undefined) approval.approval_type = dto.approval_type;
-      if (dto.approval_requested_by !== undefined) approval.approval_requested_by = dto.approval_requested_by;
-      if (dto.approval_subject !== undefined) approval.approval_subject = dto.approval_subject;
-      if (dto.approval_reference_number !== undefined) approval.approval_reference_number = dto.approval_reference_number;
-      if (dto.approval_amount !== undefined) approval.approval_amount = dto.approval_amount;
-      if (dto.approval_decision !== undefined) approval.approval_decision = dto.approval_decision;
-      if (dto.approval_decision_remarks !== undefined) approval.approval_decision_remarks = dto.approval_decision_remarks;
-      await this.approvalRepository.save(approval);
-      note.approval_detail = approval;
-    } else if (category === CeoNoteCategory.FOLLOW_UP) {
-      let followUp = await this.followUpRepository.findOne({ where: { note_id: note.id } });
-      if (!followUp) {
-        followUp = this.followUpRepository.create({ note_id: note.id });
-      }
-      if (dto.follow_up_requested_from !== undefined) followUp.follow_up_requested_from = dto.follow_up_requested_from;
-      if (dto.follow_up_requested_date !== undefined) followUp.follow_up_requested_date = this.safelyParseDate(dto.follow_up_requested_date);
-      if (dto.follow_up_last_date !== undefined) followUp.follow_up_last_date = this.safelyParseDate(dto.follow_up_last_date);
-      if (dto.follow_up_next_date !== undefined) followUp.follow_up_next_date = this.safelyParseDate(dto.follow_up_next_date);
-      if (dto.follow_up_current_response !== undefined) followUp.follow_up_current_response = dto.follow_up_current_response;
-      if (dto.follow_up_remarks !== undefined) followUp.follow_up_remarks = dto.follow_up_remarks;
-      if (dto.follow_up_history !== undefined) followUp.follow_up_history = dto.follow_up_history;
-      await this.followUpRepository.save(followUp);
-      note.follow_up_detail = followUp;
-    } else if (category === CeoNoteCategory.WAITING_RESPONSE) {
-      let waitingResponse = await this.waitingResponseRepository.findOne({ where: { note_id: note.id } });
-      if (!waitingResponse) {
-        waitingResponse = this.waitingResponseRepository.create({ note_id: note.id });
-      }
-      if (dto.waiting_response_requested_from !== undefined) waitingResponse.waiting_response_requested_from = dto.waiting_response_requested_from;
-      if (dto.waiting_response_request_date !== undefined) waitingResponse.waiting_response_request_date = this.safelyParseDate(dto.waiting_response_request_date);
-      if (dto.waiting_response_expected_date !== undefined) waitingResponse.waiting_response_expected_date = this.safelyParseDate(dto.waiting_response_expected_date);
-      if (dto.waiting_response_last_reminder_date !== undefined) waitingResponse.waiting_response_last_reminder_date = this.safelyParseDate(dto.waiting_response_last_reminder_date);
-      if (dto.waiting_response_status !== undefined) waitingResponse.waiting_response_status = dto.waiting_response_status;
-      if (dto.waiting_response_remarks !== undefined) waitingResponse.waiting_response_remarks = dto.waiting_response_remarks;
-      if (dto.waiting_response_reminders !== undefined) waitingResponse.waiting_response_reminders = dto.waiting_response_reminders;
-      await this.waitingResponseRepository.save(waitingResponse);
-      note.waiting_response_detail = waitingResponse;
-    } else if (category === CeoNoteCategory.PROJECT_COMMAND_SHEETS) {
-      let pcs = await this.pcsRepository.findOne({ where: { note_id: note.id } });
-      if (!pcs) {
-        pcs = this.pcsRepository.create({ note_id: note.id });
-      }
-      if (dto.project_name !== undefined) pcs.project_name = dto.project_name;
-      if (dto.project_details !== undefined) pcs.project_details = dto.project_details;
-      if (dto.discussions !== undefined) pcs.discussions = dto.discussions;
-      if (dto.decisions !== undefined) pcs.decisions = dto.decisions;
-      if (dto.meeting_notes !== undefined) pcs.meeting_notes = dto.meeting_notes;
-      if (dto.pending_items !== undefined) pcs.pending_items = dto.pending_items;
-      if (dto.action_items !== undefined) pcs.action_items = dto.action_items;
-      if (dto.next_steps !== undefined) pcs.next_steps = dto.next_steps;
-      if (dto.results !== undefined) pcs.results = dto.results;
-      if (dto.start_date !== undefined) pcs.start_date = this.safelyParseDate(dto.start_date);
-      if (dto.end_date !== undefined) pcs.end_date = this.safelyParseDate(dto.end_date);
-      if (dto.pcs_status !== undefined) pcs.status = dto.pcs_status;
-      await this.pcsRepository.save(pcs);
-      note.project_command_sheet_detail = pcs;
-    } else if (category === CeoNoteCategory.VISITORS) {
-      const visitor = await this.visitorRepository.findOne({ where: { related_note_id: note.id } });
-      if (visitor) {
-        if (dto.related_person !== undefined) visitor.visitor_name = dto.related_person || visitor.visitor_name;
-        if (dto.details !== undefined) visitor.purpose = dto.details || visitor.purpose;
-        if (dto.department !== undefined) visitor.department = dto.department || visitor.department;
-        if (dto.date !== undefined) visitor.visit_datetime = this.safelyParseDate(dto.date) || visitor.visit_datetime;
-        await this.visitorRepository.save(visitor);
-        note.visitor_detail = visitor;
-      }
-    } else if (category === CeoNoteCategory.CALLS) {
-      const call = await this.callRepository.findOne({ where: { related_note_id: note.id } });
-      if (call) {
-        if (dto.related_person !== undefined) call.caller_name = dto.related_person || call.caller_name;
-        if (dto.details !== undefined) call.call_purpose = dto.details || call.call_purpose;
-        if (dto.due_date !== undefined) call.follow_up_date = this.safelyParseDate(dto.due_date) || call.follow_up_date;
-        if (dto.date !== undefined) call.visit_datetime = this.safelyParseDate(dto.date) || call.visit_datetime;
-        await this.callRepository.save(call);
-        note.call_detail = call;
-      }
-    } else if (category === CeoNoteCategory.WHATSAPP) {
-      const whatsapp = await this.whatsappRepository.findOne({ where: { related_note_id: note.id } });
-      if (whatsapp) {
-        if (dto.related_person !== undefined) whatsapp.contact_name = dto.related_person || whatsapp.contact_name;
-        if (dto.details !== undefined) whatsapp.message_summary = dto.details || whatsapp.message_summary;
-        if (dto.date !== undefined) whatsapp.visit_datetime = this.safelyParseDate(dto.date) || whatsapp.visit_datetime;
-        await this.whatsappRepository.save(whatsapp);
-        note.whatsapp_detail = whatsapp;
-      }
-    }
-  }
-
-  private async deleteCategoryRecord(note: CeoNote) {
-    const category = note.category;
-    if (category === CeoNoteCategory.MEETINGS) {
-      await this.meetingRepository.delete({ note_id: note.id });
-    } else if (category === CeoNoteCategory.EMAILS_AND_APPROVALS) {
-      await this.approvalRepository.delete({ note_id: note.id });
-    } else if (category === CeoNoteCategory.FOLLOW_UP) {
-      await this.followUpRepository.delete({ note_id: note.id });
-    } else if (category === CeoNoteCategory.WAITING_RESPONSE) {
-      await this.waitingResponseRepository.delete({ note_id: note.id });
-    } else if (category === CeoNoteCategory.PROJECT_COMMAND_SHEETS) {
-      await this.pcsRepository.delete({ note_id: note.id });
-    } else if (category === CeoNoteCategory.VISITORS) {
-      const visitor = await this.visitorRepository.findOne({ where: { related_note_id: note.id } });
-      if (visitor) await this.visitorRepository.remove(visitor);
-    } else if (category === CeoNoteCategory.CALLS) {
-      const call = await this.callRepository.findOne({ where: { related_note_id: note.id } });
-      if (call) await this.callRepository.remove(call);
-    } else if (category === CeoNoteCategory.WHATSAPP) {
-      const whatsapp = await this.whatsappRepository.findOne({ where: { related_note_id: note.id } });
-      if (whatsapp) await this.whatsappRepository.remove(whatsapp);
-    }
+    note.assigned_user_ids = users.map((user) => user.id);
   }
 
   async create(createCeoNoteDto: CreateCeoNoteDto, currentUser: User) {
+    return this.dataSource.transaction(async (manager) => {
+      const noteData: Partial<CeoNote> = {
+        ...createCeoNoteDto,
+        created_by_id: currentUser?.id || null,
+        date: this.safelyParseDate(createCeoNoteDto.date) || new Date(),
+        due_date: this.safelyParseDate(createCeoNoteDto.due_date),
+      };
 
-    const noteData: Partial<CeoNote> = {
-      ...createCeoNoteDto,
-      created_by_id: currentUser?.id || null,
-      date: this.safelyParseDate(createCeoNoteDto.date) || new Date(),
-      due_date: this.safelyParseDate(createCeoNoteDto.due_date),
-    };
-    const note = this.ceoNoteRepository.create(noteData);
-    await this.setAssignedUsers(note, createCeoNoteDto.assigned_user_ids);
-    const savedNote = await this.ceoNoteRepository.save(note);
-    await this.logAudit(savedNote, currentUser, "created", null, savedNote);
+      const note = this.ceoNoteRepository.create(noteData);
+      await this.setAssignedUsers(note, createCeoNoteDto.assigned_user_ids);
+      const savedNote = await manager.getRepository(CeoNote).save(note);
 
-    await this.createCategoryRecord(savedNote, createCeoNoteDto);
-    await this.ceoNoteRepository.save(savedNote);
+      await this.auditService.log(savedNote, currentUser, "created", null, savedNote, manager);
+      await this.categoryService.createCategoryRecord(manager, savedNote, createCeoNoteDto);
+      await manager.getRepository(CeoNote).save(savedNote);
 
-    if (savedNote.assigned_user_ids && savedNote.assigned_user_ids.length > 0) {
-      const userIdsToNotify = savedNote.assigned_user_ids.filter(id => id !== currentUser?.id);
-      if (userIdsToNotify.length > 0) {
-        await this.notificationsService.create(
-          {
-            title: "CEO Note Assigned to You",
-            message: `A new CEO note "${savedNote.title}" has been assigned to you.`,
-            type: NotificationType.INFO,
-            link: `/ceo-office/notes/${savedNote.id}`,
-            metadata: { noteId: savedNote.id },
-          },
-          userIdsToNotify,
-          currentUser,
+      if (savedNote.assigned_user_ids && savedNote.assigned_user_ids.length > 0) {
+        const userIdsToNotify = savedNote.assigned_user_ids.filter(
+          (id) => id !== currentUser?.id,
         );
+        if (userIdsToNotify.length > 0) {
+          await this.notificationsService.create(
+            {
+              title: "CEO Note Assigned to You",
+              message: `A new CEO note "${savedNote.title}" has been assigned to you.`,
+              type: NotificationType.INFO,
+              link: `/ceo-office/notes/${savedNote.id}`,
+              metadata: { noteId: savedNote.id },
+            },
+            userIdsToNotify,
+            currentUser,
+          );
+        }
       }
-    }
 
-    return this.findOne(savedNote.id);
+      return this.findOne(savedNote.id);
+    });
   }
 
   async findAll(payload: any, currentUser?: User) {
@@ -440,8 +190,6 @@ export class CeoNotesService {
         .leftJoinAndSelect("note.visitor_detail", "visitor_detail")
         .leftJoinAndSelect("note.call_detail", "call_detail")
         .leftJoinAndSelect("note.whatsapp_detail", "whatsapp_detail");
-
-      console.log("=== findAll query builder ===");
 
       const safeFilters = { ...payload };
       delete safeFilters.pagination;
@@ -540,132 +288,169 @@ export class CeoNotesService {
     updateCeoNoteDto: UpdateCeoNoteDto,
     currentUser: User,
   ) {
+    return this.dataSource.transaction(async (manager) => {
+      const note = await this.findOne(id);
+      const oldValue = { ...note };
+      const oldAssignedUserIds = [...(note.assigned_user_ids || [])];
 
-    const note = await this.findOne(id);
-    const oldValue = { ...note };
-    const oldAssignedUserIds = [...(note.assigned_user_ids || [])];
-
-    Object.assign(note, updateCeoNoteDto);
-    if (updateCeoNoteDto.assigned_user_ids !== undefined) {
-      await this.setAssignedUsers(note, updateCeoNoteDto.assigned_user_ids);
-    }
-    if (updateCeoNoteDto.date !== undefined) {
-      const parsedDate = this.safelyParseDate(updateCeoNoteDto.date);
-      if (parsedDate) note.date = parsedDate;
-    }
-    if (updateCeoNoteDto.due_date !== undefined) {
-      note.due_date = this.safelyParseDate(updateCeoNoteDto.due_date);
-    }
-    const updatedNote = await this.ceoNoteRepository.save(note);
-    await this.logAudit(
-      updatedNote,
-      currentUser,
-      "updated",
-      oldValue,
-      updatedNote,
-    );
-
-    await this.updateCategoryRecord(updatedNote, updateCeoNoteDto);
-    await this.ceoNoteRepository.save(updatedNote);
-
-    const newAssignedUserIds = updatedNote.assigned_user_ids || [];
-    const addedUserIds = newAssignedUserIds.filter(id => !oldAssignedUserIds.includes(id) && id !== currentUser?.id);
-    if (addedUserIds.length > 0) {
-      await this.notificationsService.create(
-        {
-          title: "CEO Note Assigned to You",
-          message: `CEO note "${updatedNote.title}" has been assigned to you.`,
-          type: NotificationType.INFO,
-          link: `/ceo-office/notes/${updatedNote.id}`,
-          metadata: { noteId: updatedNote.id },
-        },
-        addedUserIds,
-        currentUser,
+      // Filter out null/undefined to avoid overwriting existing values
+      const filteredDto = Object.fromEntries(
+        Object.entries(updateCeoNoteDto).filter(([, v]) => v !== null && v !== undefined),
       );
-    }
+      Object.assign(note, filteredDto);
+      if (updateCeoNoteDto.assigned_user_ids !== undefined) {
+        await this.setAssignedUsers(note, updateCeoNoteDto.assigned_user_ids);
+      }
+      if (updateCeoNoteDto.date !== undefined) {
+        const parsedDate = this.safelyParseDate(updateCeoNoteDto.date);
+        if (parsedDate) note.date = parsedDate;
+      }
+      if (updateCeoNoteDto.due_date !== undefined) {
+        note.due_date = this.safelyParseDate(updateCeoNoteDto.due_date);
+      }
+      const updatedNote = await manager.getRepository(CeoNote).save(note);
+      await this.auditService.log(
+        updatedNote,
+        currentUser,
+        "updated",
+        oldValue,
+        updatedNote,
+        manager,
+      );
 
-    return this.findOne(updatedNote.id);
+      // Log status change specifically
+      if (oldValue.status !== updatedNote.status) {
+        await this.auditService.log(
+          updatedNote,
+          currentUser,
+          "status_changed",
+          { status: oldValue.status },
+          { status: updatedNote.status },
+          manager,
+        );
+      }
+
+      // Log assignment changes specifically
+      const newAssignedIds = updatedNote.assigned_user_ids || [];
+      const addedIds = newAssignedIds.filter((id) => !oldAssignedUserIds.includes(id));
+      const removedIds = oldAssignedUserIds.filter((id) => !newAssignedIds.includes(id));
+      if (addedIds.length > 0 || removedIds.length > 0) {
+        await this.auditService.log(
+          updatedNote,
+          currentUser,
+          "assignment_changed",
+          { assigned_user_ids: oldAssignedUserIds },
+          { assigned_user_ids: newAssignedIds, added: addedIds, removed: removedIds },
+          manager,
+        );
+      }
+
+      await this.categoryService.updateCategoryRecord(manager, updatedNote, updateCeoNoteDto);
+      await manager.getRepository(CeoNote).save(updatedNote);
+
+      const newAssignedUserIds = updatedNote.assigned_user_ids || [];
+      const addedUserIds = newAssignedUserIds.filter(
+        (id) => !oldAssignedUserIds.includes(id) && id !== currentUser?.id,
+      );
+      if (addedUserIds.length > 0) {
+        await this.notificationsService.create(
+          {
+            title: "CEO Note Assigned to You",
+            message: `CEO note "${updatedNote.title}" has been assigned to you.`,
+            type: NotificationType.INFO,
+            link: `/ceo-office/notes/${updatedNote.id}`,
+            metadata: { noteId: updatedNote.id },
+          },
+          addedUserIds,
+          currentUser,
+        );
+      }
+
+      return this.findOne(updatedNote.id);
+    });
   }
 
   async remove(id: number, currentUser: User) {
-    const note = await this.findOne(id);
-    await this.logAudit(note, currentUser, "deleted", note, null);
+    return this.dataSource.transaction(async (manager) => {
+      const note = await this.findOne(id);
+      await this.auditService.log(note, currentUser, "deleted", note, null, manager);
 
-    await this.deleteCategoryRecord(note);
+      if (note.category === CeoNoteCategory.PROJECT_COMMAND_SHEETS) {
+        // The CeoNote has a OneToOne relation pointing to ProjectCommandSheet via a join column.
+        // Clear the relation first so the ProjectCommandSheet can be safely deleted.
+        await manager
+          .createQueryBuilder()
+          .relation(CeoNote, "project_command_sheet_detail")
+          .of(note.id)
+          .set(null);
+      }
 
-    await this.ceoNoteRepository.remove(note);
-    return { message: "Note deleted successfully" };
+      await this.categoryService.deleteCategoryRecord(manager, note);
+      await manager.getRepository(CeoNote).remove(note);
+      return { message: "Note deleted successfully" };
+    });
   }
 
   async approve(id: number, approveNoteDto: ApproveNoteDto, currentUser: User) {
     const note = await this.findOne(id);
-    const oldValue = { ...note };
-    
-    let approval = note.approval_detail;
-    if (!approval) {
-      approval = this.approvalRepository.create({ note_id: note.id });
-    }
-    if (!approval.approval_history) {
-      approval.approval_history = [];
-    }
-    const approvalEntry = {
-      decision: approveNoteDto.decision,
-      remarks: approveNoteDto.remarks || "",
-      decision_date: new Date(),
-      decision_by_id: currentUser?.id,
-    };
-    approval.approval_history.push(approvalEntry);
-    await this.approvalRepository.save(approval);
-    note.approval_detail = approval;
-
-    if (approveNoteDto.decision === "approved") {
-      note.status = CeoNoteStatus.APPROVED;
-    } else if (approveNoteDto.decision === "rejected") {
-      note.status = CeoNoteStatus.REJECTED;
-    } else if (approveNoteDto.decision === "clarification_requested") {
-      note.status = CeoNoteStatus.WAITING_RESPONSE;
-    }
-
-    const updatedNote = await this.ceoNoteRepository.save(note);
-    await this.logAudit(
-      updatedNote,
-      currentUser,
-      "approval",
-      oldValue,
-      updatedNote,
-    );
-
-    const userIdsToNotify = [];
-    if (note.created_by_id) {
-      userIdsToNotify.push(note.created_by_id);
-    }
-    if (note.assigned_user_ids && note.assigned_user_ids.length > 0) {
-      note.assigned_user_ids.forEach(id => {
-        if (!userIdsToNotify.includes(id)) {
-          userIdsToNotify.push(id);
-        }
-      });
-    }
-    if (userIdsToNotify.length > 0) {
-      await this.notificationsService.create(
+    return this.dataSource.transaction(async (manager) => {
+      const updatedNote = await this.approvalService.approve(
+        manager,
+        note,
         {
-          title: `CEO Note ${approveNoteDto.decision === "approved" ? "Approved" : approveNoteDto.decision === "rejected" ? "Rejected" : "Clarification Requested"}`,
-          message: `CEO note "${note.title}" has been ${approveNoteDto.decision === "approved" ? "approved" : approveNoteDto.decision === "rejected" ? "rejected" : "marked as waiting for clarification"}.`,
-          type:
-            approveNoteDto.decision === "approved"
-              ? NotificationType.SUCCESS
-              : approveNoteDto.decision === "rejected"
-                ? NotificationType.ERROR
-                : NotificationType.WARNING,
-          link: `/ceo-office/notes/${id}`,
-          metadata: { noteId: id, decision: approveNoteDto.decision },
+          decision: approveNoteDto.decision,
+          remarks: approveNoteDto.remarks,
         },
-        userIdsToNotify,
         currentUser,
       );
-    }
+      return this.findOne(updatedNote.id);
+    });
+  }
 
-    return this.findOne(updatedNote.id);
+  async bulkApprove(bulkApproveDto: BulkApproveDto, currentUser: User) {
+    return this.dataSource.transaction(async (manager) => {
+      return this.approvalService.bulkApprove(
+        manager,
+        bulkApproveDto.note_ids,
+        {
+          decision: bulkApproveDto.decision,
+          remarks: bulkApproveDto.remarks,
+        },
+        currentUser,
+      );
+    });
+  }
+
+  async getInstructionRegister(query: CeoNotesQueryDto) {
+    return this.dashboardService.getInstructionRegister(query);
+  }
+
+  async bulkConvertToTask(
+    bulkConvertToTaskDto: BulkConvertToTaskDto,
+    currentUser: User,
+  ) {
+    const results = [] as Array<{ noteId: number; taskId?: number; error?: string }>;
+    return this.dataSource.transaction(async (manager) => {
+      for (const noteId of bulkConvertToTaskDto.note_ids) {
+        try {
+          const note = await manager.getRepository(CeoNote).findOne({ where: { id: noteId } });
+          if (!note) {
+            results.push({ noteId, error: "Note not found" });
+            continue;
+          }
+          const conversionResult = await this.conversionService.convertToTask(
+            manager,
+            note,
+            bulkConvertToTaskDto,
+            currentUser,
+          );
+          results.push({ noteId, taskId: conversionResult.task.id });
+        } catch (error) {
+          results.push({ noteId, error: error?.message || "Conversion failed" });
+        }
+      }
+      return results;
+    });
   }
 
   async convertToTask(
@@ -674,80 +459,18 @@ export class CeoNotesService {
     currentUser: User,
   ) {
     const note = await this.findOne(id);
-    const oldValue = { ...note };
-
-    const formatDate = (date: any): string | null => {
-      if (!date) return null;
-      if (typeof date === "string") {
-        return date;
-      }
-      if (date instanceof Date && !isNaN(date.getTime())) {
-        return date.toISOString().split("T")[0];
-      }
-      return null;
-    };
-
-    const createTaskDto: CreateTaskDto = {
-      title: convertToTaskDto.task_title || note.title,
-      description: convertToTaskDto.task_description || note.details,
-      department: convertToTaskDto.task_department || note.department,
-      priority:
-        convertToTaskDto.task_priority || this.mapPriority(note.priority),
-      due_date:
-        convertToTaskDto.task_due_date || formatDate(note.due_date),
-      assigned_users:
-        convertToTaskDto.assigned_users ||
-        note.assigned_user_ids || [],
-      workflow_type: TaskWorkflowType.STANDARD,
-      task_type: TaskType.ONE_TIME,
-      mov_checklist: convertToTaskDto.mov_items?.map(item => ({
-        text: item,
-        checked: false,
-        checked_by_id: null,
-        checked_at: null
-      })) || undefined,
-    };
-
-    const task = await this.tasksService.create(createTaskDto, currentUser);
-
-    const taskToUpdate = await this.taskRepository.findOne({
-      where: { id: task.id },
-    });
-    if (taskToUpdate) {
-      taskToUpdate.source = "ceo_note";
-      taskToUpdate.source_id = note.id;
-      await this.taskRepository.save(taskToUpdate);
-    }
-
-    note.related_task_id = task.id;
-    note.status = CeoNoteStatus.IN_PROGRESS;
-    await this.setAssignedUsers(note, convertToTaskDto.assigned_users);
-    const updatedNote = await this.ceoNoteRepository.save(note);
-
-    await this.logAudit(
-      updatedNote,
-      currentUser,
-      "converted_to_task",
-      oldValue,
-      { note: updatedNote, task_id: task.id },
-    );
-
-    const userIdsToNotify = createTaskDto.assigned_users;
-    if (userIdsToNotify && userIdsToNotify.length > 0) {
-      await this.notificationsService.create(
-        {
-          title: "CEO Note Converted to Task",
-          message: `A CEO note "${note.title}" has been converted to a task and assigned to you.`,
-          type: NotificationType.INFO,
-          link: `/tasks/${task.id}`,
-          metadata: { noteId: note.id, taskId: task.id },
-        },
-        userIdsToNotify,
+    return this.dataSource.transaction(async (manager) => {
+      const result = await this.conversionService.convertToTask(
+        manager,
+        note,
+        convertToTaskDto,
         currentUser,
       );
-    }
-
-    return { note: await this.findOne(updatedNote.id), task };
+      return {
+        note: await this.findOne(result.note.id),
+        task: result.task,
+      };
+    });
   }
 
   private mapPriority(priority: string): TaskPriority {
@@ -766,11 +489,9 @@ export class CeoNotesService {
   }
 
   async getDashboardStats(currentUser?: User, category?: string) {
-    console.log("getDashboardStats called with category:", category);
     const qb = this.ceoNoteRepository.createQueryBuilder("note");
 
     if (category) {
-      console.log("Applying category filter:", category);
       qb.andWhere("note.category = :category", { category });
     }
 
@@ -941,5 +662,9 @@ export class CeoNotesService {
       order: { created_at: "DESC" },
     });
     return audits;
+  }
+
+  async generateReport(type: ReportType, startDate?: string, endDate?: string) {
+    return this.reportService.generateReport(type, startDate, endDate);
   }
 }

@@ -8,15 +8,19 @@ import {
   Delete,
   Query,
   UseGuards,
+  ParseIntPipe,
 } from "@nestjs/common";
 import { VisitorsService } from "./visitors.service";
 import { JwtGuard } from "../auth/jwt.guard";
+import { RolesGuard } from "../auth/guards/roles.guard";
+import { Roles } from "../auth/roles.decorator";
+import { UserRole } from "../users/user.entity";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { User } from "../users/user.entity";
 import { ConvertToTaskDto } from "./dto/convert-to-task.dto";
 
 @Controller("visitors")
-@UseGuards(JwtGuard)
+@UseGuards(JwtGuard, RolesGuard)
 export class VisitorsController {
   constructor(private readonly visitorsService: VisitorsService) {}
 
@@ -31,30 +35,31 @@ export class VisitorsController {
   }
 
   @Get(":id")
-  findOne(@Param("id") id: string) {
-    return this.visitorsService.findOne(+id);
+  findOne(@Param("id", ParseIntPipe) id: number, @Query("type") type?: string) {
+    return this.visitorsService.findOne(id, type);
   }
 
   @Patch(":id")
   update(
-    @Param("id") id: string,
+    @Param("id", ParseIntPipe) id: number,
     @Body() updateDto: any,
     @CurrentUser() currentUser: User,
   ) {
-    return this.visitorsService.update(+id, updateDto, currentUser);
+    return this.visitorsService.update(id, updateDto, currentUser);
   }
 
   @Delete(":id")
-  remove(@Param("id") id: string) {
-    return this.visitorsService.remove(+id);
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.CEO, UserRole.PA)
+  remove(@Param("id", ParseIntPipe) id: number, @Query("type") type?: string) {
+    return this.visitorsService.remove(id, type);
   }
 
   @Post(":id/convert-to-task")
   convertToTask(
-    @Param("id") id: string,
+    @Param("id", ParseIntPipe) id: number,
     @Body() convertToTaskDto: ConvertToTaskDto,
     @CurrentUser() currentUser: User,
   ) {
-    return this.visitorsService.convertToTask(+id, convertToTaskDto, currentUser);
+    return this.visitorsService.convertToTask(id, convertToTaskDto, currentUser);
   }
 }
