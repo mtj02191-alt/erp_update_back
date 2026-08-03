@@ -29,7 +29,7 @@ import { CurrentUser } from "../auth/current-user.decorator";
 import { User } from "../users/user.entity";
 
 @Controller("ceo-notes")
-@UseGuards(JwtGuard, RolesGuard)
+// @UseGuards(JwtGuard, RolesGuard)
 export class CeoNotesController {
   constructor(private readonly ceoNotesService: CeoNotesService) {}
 

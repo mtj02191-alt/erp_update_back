@@ -155,12 +155,15 @@ export class CeoNote {
   project_command_sheet_detail: ProjectCommandSheet;
 
   @OneToOne(() => Visitor, (visitor) => visitor.related_note, { eager: false, cascade: true })
+  @JoinColumn()
   visitor_detail: Visitor;
 
   @OneToOne(() => Call, (call) => call.related_note, { eager: false, cascade: true })
+  @JoinColumn()
   call_detail: Call;
 
   @OneToOne(() => WhatsAppMessage, (whatsapp) => whatsapp.related_note, { eager: false, cascade: true })
+  @JoinColumn()
   whatsapp_detail: WhatsAppMessage;
 
   @CreateDateColumn({ type: "timestamp", default: () => "CURRENT_TIMESTAMP" })

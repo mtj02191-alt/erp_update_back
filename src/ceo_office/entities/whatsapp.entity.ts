@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   ManyToOne,
+  OneToOne,
   JoinColumn,
 } from "typeorm";
 import { User } from "../../users/user.entity";
@@ -43,7 +44,7 @@ export class WhatsAppMessage {
   @Column({ type: "int", nullable: true })
   related_note_id: number;
 
-  @ManyToOne(() => CeoNote, {
+  @OneToOne(() => CeoNote, (note) => note.whatsapp_detail, {
     nullable: true,
     eager: false,
     onDelete: "SET NULL",

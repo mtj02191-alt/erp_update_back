@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   ManyToOne,
+  OneToOne,
   JoinColumn,
 } from "typeorm";
 import { User } from "../../users/user.entity";
@@ -49,7 +50,7 @@ export class Visitor {
   @Column({ type: "int", nullable: true })
   related_note_id: number;
 
-  @ManyToOne(() => CeoNote, {
+  @OneToOne(() => CeoNote, (note) => note.visitor_detail, {
     nullable: true,
     eager: false,
     onDelete: "SET NULL",

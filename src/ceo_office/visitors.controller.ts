@@ -20,7 +20,7 @@ import { User } from "../users/user.entity";
 import { ConvertToTaskDto } from "./dto/convert-to-task.dto";
 
 @Controller("visitors")
-@UseGuards(JwtGuard, RolesGuard)
+// @UseGuards(JwtGuard, RolesGuard)
 export class VisitorsController {
   constructor(private readonly visitorsService: VisitorsService) {}
 
