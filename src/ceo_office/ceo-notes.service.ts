@@ -33,8 +33,6 @@ import {
   TaskType,
 } from "../tasks/entities/task.entity";
 import { applyCommonFilters } from "../utils/filters/common-filter.util";
-import { VisitorsService } from "./visitors.service";
-import { ProjectCommandSheetsService } from "./project-command-sheets.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { NotificationType } from "../notifications/entities/notification.entity";
 import { CeoNoteAuditService } from "./ceo-note-audit.service";
@@ -75,8 +73,6 @@ export class CeoNotesService {
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     private readonly tasksService: TasksService,
-    private readonly visitorsService: VisitorsService,
-    private readonly projectCommandSheetsService: ProjectCommandSheetsService,
     private readonly notificationsService: NotificationsService,
     private readonly dataSource: DataSource,
     private readonly auditService: CeoNoteAuditService,
@@ -165,7 +161,24 @@ export class CeoNotesService {
         }
       }
 
-      return this.findOne(savedNote.id);
+      // Fetch the saved note using the transaction manager so we see uncommitted changes
+      const created = await manager.getRepository(CeoNote).findOne({
+        where: { id: savedNote.id },
+        relations: [
+          "created_by",
+          "related_task",
+          "assigned_users",
+          "meeting_detail",
+          "approval_detail",
+          "follow_up_detail",
+          "waiting_response_detail",
+          "project_command_sheet_detail",
+          "visitor_detail",
+          "call_detail",
+          "whatsapp_detail",
+        ],
+      });
+      return created;
     });
   }
 
@@ -446,7 +459,8 @@ export class CeoNotesService {
           );
           results.push({ noteId, taskId: conversionResult.task.id });
         } catch (error) {
-          results.push({ noteId, error: error?.message || "Conversion failed" });
+          const msg = error instanceof Error ? error.message : String(error ?? "");
+          results.push({ noteId, error: msg || "Conversion failed" });
         }
       }
       return results;
@@ -572,17 +586,39 @@ export class CeoNotesService {
     );
     const completedNotes = await getNotesForCategory(CeoNoteCategory.COMPLETED);
 
-    const recentVisitors = await this.visitorsService.getRecentVisitors(10);
-    const recentCalls = await this.visitorsService.getRecentCalls(10);
-    const recentWhatsapps = await this.visitorsService.getRecentWhatsapps(10);
-    const visitorsResult = await this.visitorsService.findAll({
+    const recentVisitors = await this.visitorRepository.find({
+      take: 10,
+      order: { visit_datetime: "DESC" },
+    });
+    const recentCalls = await this.callRepository.find({
+      take: 10,
+      order: { visit_datetime: "DESC" },
+    });
+    const recentWhatsapps = await this.whatsappRepository.find({
+      take: 10,
+      order: { visit_datetime: "DESC" },
+    });
+    const visitorsResult = {
+      data: await this.visitorRepository.find({
+        take: 10,
+        order: { visit_datetime: "DESC" },
+        relations: ["related_note"],
+      }),
+      total: await this.visitorRepository.count(),
       page: 1,
       pageSize: 10,
-    });
-    const projectSheetsResult = await this.projectCommandSheetsService.findAll({
+      totalPages: 1,
+    };
+    const projectSheetsResult = {
+      data: await this.pcsRepository.find({
+        take: 10,
+        order: { created_at: "DESC" },
+      }),
+      total: await this.pcsRepository.count(),
       page: 1,
       pageSize: 10,
-    });
+      totalPages: 1,
+    };
 
     const getCombinedList = (notes: any[], records: any[], noteCategory: string, recordType: string) => {
       const noteIds = new Set(notes.map(n => n.id));

@@ -35,7 +35,7 @@ export class VisitorsController {
   }
 
   @Get(":id")
-  findOne(@Param("id", ParseIntPipe) id: number, @Query("type") type?: string) {
+  findOne(@Param("id", ParseIntPipe) id: number, @Query("type") type: string | undefined) {
     return this.visitorsService.findOne(id, type);
   }
 
@@ -50,8 +50,12 @@ export class VisitorsController {
 
   @Delete(":id")
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.CEO, UserRole.PA)
-  remove(@Param("id", ParseIntPipe) id: number, @Query("type") type?: string) {
-    return this.visitorsService.remove(id, type);
+  remove(
+    @Param("id", ParseIntPipe) id: number,
+    @CurrentUser() currentUser: User,
+    @Query("type") type: string | undefined,
+  ) {
+    return this.visitorsService.remove(id, currentUser, type);
   }
 
   @Post(":id/convert-to-task")

@@ -135,35 +135,27 @@ export class CeoNote {
 
   // ==================== CATEGORY ENTITY RELATIONS ====================
   @OneToOne(() => Meeting, (meeting) => meeting.note, { eager: false, cascade: true })
-  @JoinColumn()
   meeting_detail: Meeting;
 
   @OneToOne(() => Approval, (approval) => approval.note, { eager: false, cascade: true })
-  @JoinColumn()
   approval_detail: Approval;
 
   @OneToOne(() => FollowUp, (followUp) => followUp.note, { eager: false, cascade: true })
-  @JoinColumn()
   follow_up_detail: FollowUp;
 
   @OneToOne(() => WaitingResponse, (waitingResponse) => waitingResponse.note, { eager: false, cascade: true })
-  @JoinColumn()
   waiting_response_detail: WaitingResponse;
 
   @OneToOne(() => ProjectCommandSheet, (pcs) => pcs.note, { eager: false, cascade: true })
-  @JoinColumn()
   project_command_sheet_detail: ProjectCommandSheet;
 
   @OneToOne(() => Visitor, (visitor) => visitor.related_note, { eager: false, cascade: true })
-  @JoinColumn()
   visitor_detail: Visitor;
 
   @OneToOne(() => Call, (call) => call.related_note, { eager: false, cascade: true })
-  @JoinColumn()
   call_detail: Call;
 
   @OneToOne(() => WhatsAppMessage, (whatsapp) => whatsapp.related_note, { eager: false, cascade: true })
-  @JoinColumn()
   whatsapp_detail: WhatsAppMessage;
 
   @CreateDateColumn({ type: "timestamp", default: () => "CURRENT_TIMESTAMP" })

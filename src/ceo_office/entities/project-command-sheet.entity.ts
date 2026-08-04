@@ -21,6 +21,7 @@ export class ProjectCommandSheet {
   note_id: number;
 
   @OneToOne(() => CeoNote, (note) => note.project_command_sheet_detail, { onDelete: "CASCADE" })
+  @JoinColumn({ name: "note_id" })
   note: CeoNote;
 
   @Column({ type: "varchar", length: 500, nullable: false })

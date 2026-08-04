@@ -27,6 +27,8 @@ import { UserRole } from "../users/user.entity";
 import { ReportType } from "./ceo-note-report.service";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { User } from "../users/user.entity";
+import { ProjectCommandSheetsService } from "./project-command-sheets.service";
+import { VisitorsService } from "./visitors.service";
 
 @Controller("ceo-notes")
 // @UseGuards(JwtGuard, RolesGuard)
@@ -72,6 +74,8 @@ export class CeoNotesController {
       currentUser,
     );
   }
+
+  
 
   @Get("dashboard/stats")
   getDashboardStats(

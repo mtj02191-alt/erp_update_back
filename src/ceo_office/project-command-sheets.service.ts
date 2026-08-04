@@ -6,9 +6,11 @@ import { CreateProjectCommandSheetDto } from "./dto/create-project-command-sheet
 import { UpdateProjectCommandSheetDto } from "./dto/update-project-command-sheet.dto";
 import { ConvertToTaskDto } from "./dto/convert-to-task.dto";
 import { User, Department } from "../users/user.entity";
-import { CeoNote } from "./entities/ceo-note.entity";
+import { CeoNote, CeoNoteStatus } from "./entities/ceo-note.entity";
 import { TasksService } from "../tasks/tasks.service";
 import { CreateTaskDto } from "../tasks/dto/create-task.dto";
+import { CeoNotesService } from "./ceo-notes.service";
+import { CeoNoteCategory } from "./entities/ceo-note.entity";
 import {
   Task,
   TaskWorkflowType,
@@ -31,15 +33,26 @@ export class ProjectCommandSheetsService {
     private readonly taskRepository: Repository<Task>,
     private readonly tasksService: TasksService,
     private readonly notificationsService: NotificationsService,
+    private readonly ceoNotesService: CeoNotesService,
   ) {}
 
   async create(
     createProjectCommandSheetDto: CreateProjectCommandSheetDto,
     currentUser: User,
   ) {
-    const sheetData: Partial<ProjectCommandSheet> = {
-      ...createProjectCommandSheetDto,
-      created_by_id: currentUser?.id || null,
+    const notePayload: any = {
+      category: CeoNoteCategory.PROJECT_COMMAND_SHEETS,
+      title: createProjectCommandSheetDto.project_name,
+      details: createProjectCommandSheetDto.project_details,
+      related_person: createProjectCommandSheetDto.project_name,
+      department: currentUser?.department || null,
+      priority: "medium",
+      status: CeoNoteStatus.UNPROCESSED,
+      project_name: createProjectCommandSheetDto.project_name,
+      project_details: createProjectCommandSheetDto.project_details,
+      discussions: createProjectCommandSheetDto.discussions,
+      decisions: createProjectCommandSheetDto.decisions,
+      meeting_notes: createProjectCommandSheetDto.meeting_notes,
       pending_items: createProjectCommandSheetDto.pending_items?.map(
         (item, idx) => ({
           id: `pending-${Date.now()}-${idx}`,
@@ -57,9 +70,12 @@ export class ProjectCommandSheetsService {
           status: "pending" as const,
         }),
       ),
+      next_steps: createProjectCommandSheetDto.next_steps,
+      results: createProjectCommandSheetDto.results,
     };
-    const sheet = this.projectCommandSheetRepository.create(sheetData);
-    return await this.projectCommandSheetRepository.save(sheet);
+
+    const note = await this.ceoNotesService.create(notePayload, currentUser);
+    return note.project_command_sheet_detail;
   }
 
   async findAll(payload: any) {
@@ -104,37 +120,38 @@ export class ProjectCommandSheetsService {
     currentUser: User,
   ) {
     const sheet = await this.findOne(id);
-    Object.assign(sheet, updateProjectCommandSheetDto);
-    const updatedSheet = await this.projectCommandSheetRepository.save(sheet);
-
-    // Sync key fields back to linked CeoNote if one exists
     if (sheet.note_id) {
-      const note = await this.ceoNoteRepository.findOne({ where: { id: sheet.note_id } });
-      if (note) {
-        if (updateProjectCommandSheetDto.project_name) {
-          note.title = updateProjectCommandSheetDto.project_name;
-        }
-        if (updateProjectCommandSheetDto.project_details) {
-          note.details = updateProjectCommandSheetDto.project_details;
-        }
-        if ((updateProjectCommandSheetDto as any).status) {
-          note.status = (updateProjectCommandSheetDto as any).status;
-        }
-        await this.ceoNoteRepository.save(note);
-      }
+      const notePayload: any = {
+        category: CeoNoteCategory.PROJECT_COMMAND_SHEETS,
+        project_name: updateProjectCommandSheetDto.project_name,
+        project_details: updateProjectCommandSheetDto.project_details,
+        discussions: updateProjectCommandSheetDto.discussions,
+        decisions: updateProjectCommandSheetDto.decisions,
+        meeting_notes: updateProjectCommandSheetDto.meeting_notes,
+        pending_items: updateProjectCommandSheetDto.pending_items,
+        action_items: updateProjectCommandSheetDto.action_items,
+        next_steps: updateProjectCommandSheetDto.next_steps,
+        results: updateProjectCommandSheetDto.results,
+        status: (updateProjectCommandSheetDto as any).status,
+      };
+      const note = await this.ceoNotesService.update(
+        sheet.note_id,
+        notePayload,
+        currentUser,
+      );
+      return note.project_command_sheet_detail;
     }
 
-    return updatedSheet;
+    Object.assign(sheet, updateProjectCommandSheetDto);
+    return await this.projectCommandSheetRepository.save(sheet);
   }
 
-  async remove(id: number) {
+  async remove(id: number, currentUser: User) {
     const sheet = await this.findOne(id);
-
-    // Clear any CEO note relation before deleting the sheet.
-    await this.ceoNoteRepository.query(
-      `UPDATE ceo_notes SET project_command_sheet_detail_id = NULL WHERE project_command_sheet_detail_id = $1`,
-      [id],
-    );
+    if (sheet.note_id) {
+      await this.ceoNotesService.remove(sheet.note_id, currentUser);
+      return { message: "Project command sheet and linked CEO note deleted successfully" };
+    }
 
     await this.projectCommandSheetRepository.remove(sheet);
     return { message: "Sheet deleted successfully" };

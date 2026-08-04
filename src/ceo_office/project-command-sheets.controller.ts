@@ -64,8 +64,11 @@ export class ProjectCommandSheetsController {
 
   @Delete(":id")
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.CEO, UserRole.PA)
-  remove(@Param("id", ParseIntPipe) id: number) {
-    return this.projectCommandSheetsService.remove(id);
+  remove(
+    @Param("id", ParseIntPipe) id: number,
+    @CurrentUser() currentUser: User,
+  ) {
+    return this.projectCommandSheetsService.remove(id, currentUser);
   }
 
   @Post(":sheetId/action-items/:actionItemId/convert-to-task")

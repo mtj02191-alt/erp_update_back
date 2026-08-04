@@ -53,7 +53,7 @@ export class Visitor {
   @OneToOne(() => CeoNote, (note) => note.visitor_detail, {
     nullable: true,
     eager: false,
-    onDelete: "SET NULL",
+    onDelete: "CASCADE",
   })
   @JoinColumn({ name: "related_note_id" })
   related_note: CeoNote;

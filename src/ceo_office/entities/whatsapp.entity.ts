@@ -47,7 +47,7 @@ export class WhatsAppMessage {
   @OneToOne(() => CeoNote, (note) => note.whatsapp_detail, {
     nullable: true,
     eager: false,
-    onDelete: "SET NULL",
+    onDelete: "CASCADE",
   })
   @JoinColumn({ name: "related_note_id" })
   related_note: CeoNote;

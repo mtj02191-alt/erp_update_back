@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   OneToOne,
+  JoinColumn,
 } from "typeorm";
 import { CeoNote } from "./ceo-note.entity";
 
@@ -17,6 +18,7 @@ export class Meeting {
   note_id: number;
 
   @OneToOne(() => CeoNote, (note) => note.meeting_detail, { onDelete: "CASCADE" })
+  @JoinColumn({ name: "note_id" })
   note: CeoNote;
 
   @Column({ type: "timestamp", nullable: true })

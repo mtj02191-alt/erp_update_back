@@ -25,8 +25,6 @@ import { CeoNoteReportService } from "./ceo-note-report.service";
 import { CeoNoteCronService } from "./ceo-note-cron.service";
 import { CeoOfficeEventsListener } from "./ceo-office.events.listener";
 import { CeoNotesController } from "./ceo-notes.controller";
-import { ProjectCommandSheetsController } from "./project-command-sheets.controller";
-import { VisitorsController } from "./visitors.controller";
 import { TasksModule } from "../tasks/tasks.module";
 import { AuthModule } from "../auth/auth.module";
 import { NotificationsModule } from "../notifications/notifications.module";
@@ -57,8 +55,6 @@ import { NotificationsModule } from "../notifications/notifications.module";
   ],
   controllers: [
     CeoNotesController,
-    ProjectCommandSheetsController,
-    VisitorsController,
   ],
   providers: [
     CeoNotesService,

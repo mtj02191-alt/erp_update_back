@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   OneToOne,
+  JoinColumn,
 } from "typeorm";
 import { CeoNote } from "./ceo-note.entity";
 
@@ -17,6 +18,7 @@ export class FollowUp {
   note_id: number;
 
   @OneToOne(() => CeoNote, (note) => note.follow_up_detail, { onDelete: "CASCADE" })
+  @JoinColumn({ name: "note_id" })
   note: CeoNote;
 
   @Column({ type: "varchar", length: 255, nullable: true })

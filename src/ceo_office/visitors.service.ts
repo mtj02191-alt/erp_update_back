@@ -16,6 +16,8 @@ import { Task, TaskWorkflowType, TaskPriority, TaskType } from "../tasks/entitie
 import { NotificationsService } from "../notifications/notifications.service";
 import { NotificationType } from "../notifications/entities/notification.entity";
 import { CreateTaskDto } from "../tasks/dto/create-task.dto";
+import { CeoNotesService } from "./ceo-notes.service";
+import { CeoNoteCategory } from "./entities/ceo-note.entity";
 import { ConvertToTaskDto } from "./dto/convert-to-task.dto";
 
 @Injectable()
@@ -35,6 +37,7 @@ export class VisitorsService {
     private readonly taskRepository: Repository<Task>,
     private readonly tasksService: TasksService,
     private readonly notificationsService: NotificationsService,
+    private readonly ceoNotesService: CeoNotesService,
   ) {}
 
   private async validateRelatedNoteId(noteId?: number): Promise<number | null> {
@@ -69,70 +72,70 @@ export class VisitorsService {
       data.related_note_id,
     );
 
-    // Create corresponding CeoNote first only if there isn't one already
-    let ceoNote: CeoNote | null = null;
-    if (!relatedNoteId) { // Only create new note if not already linked to one
-      const noteCategory = type === "call" ? "calls" : type === "whatsapp" ? "whatsapp" : "visitors";
-      const noteTitle = type === "call" 
-        ? `Call with ${data.caller_name || "Unknown"}` 
-        : type === "whatsapp" 
-          ? `WhatsApp with ${data.contact_name || "Unknown"}`
-          : `Visit from ${data.visitor_name || "Unknown"}`;
-      const noteDetails = type === "call" 
+    const noteCategory =
+      type === "call"
+        ? CeoNoteCategory.CALLS
+        : type === "whatsapp"
+        ? CeoNoteCategory.WHATSAPP
+        : CeoNoteCategory.VISITORS;
+    const noteTitle =
+      type === "call"
+        ? `Call with ${data.caller_name || "Unknown"}`
+        : type === "whatsapp"
+        ? `WhatsApp with ${data.contact_name || "Unknown"}`
+        : `Visit from ${data.visitor_name || "Unknown"}`;
+    const noteDetails =
+      type === "call"
         ? `Purpose: ${data.call_purpose || ""}\nSummary: ${data.call_summary || ""}`
         : type === "whatsapp"
-          ? `Message Summary: ${data.message_summary || ""}\nRequired Action: ${data.required_action || ""}`
-          : `Purpose: ${data.purpose || ""}\nOrganization: ${data.organization || ""}`;
-      
-      const ceoNoteData: Partial<CeoNote> = {
-        date: this.safelyParseDate(data.visit_datetime) || new Date(),
-        category: noteCategory as any,
-        title: noteTitle,
-        details: noteDetails,
-        department: data.department || null,
-        priority: "medium",
-        due_date: type === "call" && data.follow_up_date ? this.safelyParseDate(data.follow_up_date) : null,
-        status: CeoNoteStatus.UNPROCESSED,
-        created_by_id: currentUser?.id || null,
-      };
-      ceoNote = this.ceoNoteRepository.create(ceoNoteData);
-      ceoNote = await this.ceoNoteRepository.save(ceoNote);
+        ? `Message Summary: ${data.message_summary || ""}\nRequired Action: ${data.required_action || ""}`
+        : `Purpose: ${data.purpose || ""}\nOrganization: ${data.organization || ""}`;
+
+    const ceoNotePayload: any = {
+      category: noteCategory,
+      title: noteTitle,
+      details: noteDetails,
+      related_person:
+        type === "call"
+          ? data.caller_name
+          : type === "whatsapp"
+          ? data.contact_name
+          : data.visitor_name,
+      department: data.department || null,
+      priority: "medium",
+      status: CeoNoteStatus.UNPROCESSED,
+      visit_datetime: data.visit_datetime,
+      follow_up_date: data.follow_up_date,
+      visitor_name: data.visitor_name,
+      organization: data.organization,
+      purpose: data.purpose,
+      meeting_with: data.meeting_with,
+      protocol_required: data.protocol_required,
+      expected_duration: data.expected_duration,
+      visitor_outcome: data.visitor_outcome,
+      caller_name: data.caller_name,
+      phone_number: data.phone_number,
+      call_purpose: data.call_purpose,
+      call_summary: data.call_summary,
+      follow_up_required: data.follow_up_required,
+      contact_name: data.contact_name,
+      message_summary: data.message_summary,
+      required_action: data.required_action,
+      attachment_url: data.attachment_url,
+      response_status: data.response_status,
+      remarks: data.remarks,
+      related_note_id: relatedNoteId,
+    };
+
+    if (relatedNoteId) {
+      return this.ceoNotesService.update(
+        relatedNoteId,
+        ceoNotePayload,
+        currentUser,
+      );
     }
 
-    let createdEntity: any;
-
-    if (type === "call") {
-      const callData: Partial<Call> = {
-        ...data,
-        related_note_id: ceoNote ? ceoNote.id : relatedNoteId,
-        created_by_id: currentUser?.id || null,
-        visit_datetime: this.safelyParseDate(data.visit_datetime) || new Date(),
-        follow_up_date: this.safelyParseDate(data.follow_up_date),
-      };
-      const call = this.callRepository.create(callData);
-      createdEntity = await this.callRepository.save(call);
-    } else if (type === "whatsapp") {
-      const whatsappData: Partial<WhatsAppMessage> = {
-        ...data,
-        related_note_id: ceoNote ? ceoNote.id : relatedNoteId,
-        created_by_id: currentUser?.id || null,
-        visit_datetime: this.safelyParseDate(data.visit_datetime) || new Date(),
-      };
-      const whatsapp = this.whatsappRepository.create(whatsappData);
-      createdEntity = await this.whatsappRepository.save(whatsapp);
-    } else {
-      // Default to Visitor
-      const visitorData: Partial<Visitor> = {
-        ...data,
-        related_note_id: ceoNote ? ceoNote.id : relatedNoteId,
-        created_by_id: currentUser?.id || null,
-        visit_datetime: this.safelyParseDate(data.visit_datetime) || new Date(),
-      };
-      const visitor = this.visitorRepository.create(visitorData);
-      createdEntity = await this.visitorRepository.save(visitor);
-    }
-
-    return createdEntity;
+    return this.ceoNotesService.create(ceoNotePayload, currentUser);
   }
 
   async findAll(payload: any) {
@@ -254,89 +257,89 @@ export class VisitorsService {
         ? await this.validateRelatedNoteId(data.related_note_id)
         : undefined;
 
-    let updatedEntity: any;
-    let linkedNoteId: number | null = null;
+    const noteCategory =
+      type === "call"
+        ? CeoNoteCategory.CALLS
+        : type === "whatsapp"
+        ? CeoNoteCategory.WHATSAPP
+        : CeoNoteCategory.VISITORS;
 
+    let repository: Repository<any>;
+    let entity: any;
     if (type === "call") {
-      const call = await this.callRepository.findOne({ where: { id } });
-      if (!call) throw new NotFoundException(`Call with ID ${id} not found`);
-
-      const updateData: Partial<Call> = {
-        ...data,
-        related_note_id:
-          relatedNoteId !== undefined ? relatedNoteId : call.related_note_id,
-      };
-      if (data.visit_datetime !== undefined)
-        updateData.visit_datetime = this.safelyParseDate(data.visit_datetime);
-      if (data.follow_up_date !== undefined)
-        updateData.follow_up_date = this.safelyParseDate(data.follow_up_date);
-
-      Object.assign(call, updateData);
-      updatedEntity = await this.callRepository.save(call);
-      linkedNoteId = updatedEntity.related_note_id;
+      repository = this.callRepository;
     } else if (type === "whatsapp") {
-      const whatsapp = await this.whatsappRepository.findOne({ where: { id } });
-      if (!whatsapp)
-        throw new NotFoundException(`WhatsApp with ID ${id} not found`);
-
-      const updateData: Partial<WhatsAppMessage> = {
-        ...data,
-        related_note_id:
-          relatedNoteId !== undefined
-            ? relatedNoteId
-            : whatsapp.related_note_id,
-      };
-      if (data.visit_datetime !== undefined)
-        updateData.visit_datetime = this.safelyParseDate(data.visit_datetime);
-
-      Object.assign(whatsapp, updateData);
-      updatedEntity = await this.whatsappRepository.save(whatsapp);
-      linkedNoteId = updatedEntity.related_note_id;
+      repository = this.whatsappRepository;
     } else {
-      // Default to Visitor
-      const visitor = await this.visitorRepository.findOne({ where: { id } });
-      if (!visitor)
-        throw new NotFoundException(`Visitor with ID ${id} not found`);
+      repository = this.visitorRepository;
+    }
 
-      const updateData: Partial<Visitor> = {
-        ...data,
-        related_note_id:
-          relatedNoteId !== undefined ? relatedNoteId : visitor.related_note_id,
+    entity = await repository.findOne({ where: { id } });
+    if (!entity) {
+      throw new NotFoundException(`${type.charAt(0).toUpperCase() + type.slice(1)} with ID ${id} not found`);
+    }
+
+    const noteId = relatedNoteId ?? entity.related_note_id;
+    if (noteId) {
+      const ceoNotePayload: any = {
+        category: noteCategory,
+        title:
+          type === "call"
+            ? `Call with ${data.caller_name || entity.caller_name || "Unknown"}`
+            : type === "whatsapp"
+            ? `WhatsApp with ${data.contact_name || entity.contact_name || "Unknown"}`
+            : `Visit from ${data.visitor_name || entity.visitor_name || "Unknown"}`,
+        details:
+          type === "call"
+            ? `Purpose: ${data.call_purpose || entity.call_purpose || ""}\nSummary: ${data.call_summary || entity.call_summary || ""}`
+            : type === "whatsapp"
+            ? `Message Summary: ${data.message_summary || entity.message_summary || ""}\nRequired Action: ${data.required_action || entity.required_action || ""}`
+            : `Purpose: ${data.purpose || entity.purpose || ""}\nOrganization: ${data.organization || entity.organization || ""}`,
+        related_person:
+          type === "call"
+            ? data.caller_name || entity.caller_name
+            : type === "whatsapp"
+            ? data.contact_name || entity.contact_name
+            : data.visitor_name || entity.visitor_name,
+        department: data.department || entity.department,
+        visit_datetime: data.visit_datetime || entity.visit_datetime,
+        follow_up_date: data.follow_up_date || entity.follow_up_date,
+        visitor_name: data.visitor_name || entity.visitor_name,
+        organization: data.organization || entity.organization,
+        purpose: data.purpose || entity.purpose,
+        meeting_with: data.meeting_with || entity.meeting_with,
+        protocol_required: data.protocol_required || entity.protocol_required,
+        expected_duration: data.expected_duration || entity.expected_duration,
+        visitor_outcome: data.visitor_outcome || entity.visitor_outcome,
+        caller_name: data.caller_name || entity.caller_name,
+        phone_number: data.phone_number || entity.phone_number,
+        call_purpose: data.call_purpose || entity.call_purpose,
+        call_summary: data.call_summary || entity.call_summary,
+        follow_up_required: data.follow_up_required || entity.follow_up_required,
+        contact_name: data.contact_name || entity.contact_name,
+        message_summary: data.message_summary || entity.message_summary,
+        required_action: data.required_action || entity.required_action,
+        attachment_url: data.attachment_url || entity.attachment_url,
+        response_status: data.response_status || entity.response_status,
+        remarks: data.remarks || entity.remarks,
+        status: data.status || entity.status,
       };
-      if (data.visit_datetime !== undefined)
-        updateData.visit_datetime = this.safelyParseDate(data.visit_datetime);
-
-      Object.assign(visitor, updateData);
-      updatedEntity = await this.visitorRepository.save(visitor);
-      linkedNoteId = updatedEntity.related_note_id;
+      await this.ceoNotesService.update(noteId, ceoNotePayload, currentUser);
+      return this.findOne(id, type);
     }
 
-    // Update linked CeoNote if it exists
-    if (linkedNoteId) {
-      const note = await this.ceoNoteRepository.findOne({ where: { id: linkedNoteId } });
-      if (note) {
-        if (type === "call") {
-          note.related_person = data.caller_name || note.related_person;
-          note.details = data.call_purpose ? `Purpose: ${data.call_purpose}\nSummary: ${data.call_summary || ""}` : note.details;
-          note.due_date = data.follow_up_date ? this.safelyParseDate(data.follow_up_date) : note.due_date;
-          note.date = data.visit_datetime ? this.safelyParseDate(data.visit_datetime) : note.date;
-        } else if (type === "whatsapp") {
-          note.related_person = data.contact_name || note.related_person;
-          note.details = data.message_summary ? `Message Summary: ${data.message_summary}\nRequired Action: ${data.required_action || ""}` : note.details;
-          note.date = data.visit_datetime ? this.safelyParseDate(data.visit_datetime) : note.date;
-        } else { // Visitor
-          note.related_person = data.visitor_name || note.related_person;
-          note.details = data.purpose ? `Purpose: ${data.purpose}\nOrganization: ${data.organization || ""}` : note.details;
-          note.date = data.visit_datetime ? this.safelyParseDate(data.visit_datetime) : note.date;
-        }
-        await this.ceoNoteRepository.save(note);
-      }
-    }
+    // Preserve legacy update when no linked note exists
+    const updateData: any = { ...data };
+    if (data.visit_datetime !== undefined)
+      updateData.visit_datetime = this.safelyParseDate(data.visit_datetime);
+    if (data.follow_up_date !== undefined)
+      updateData.follow_up_date = this.safelyParseDate(data.follow_up_date);
 
-    return updatedEntity;
+    Object.assign(entity, updateData);
+    return await repository.save(entity);
   }
 
-  async remove(id: number, type?: string) {
+  async remove(id: number, currentUser: User, type?: string) {
     let entity: any = null;
     let repository: Repository<any> | null = null;
 
@@ -373,18 +376,12 @@ export class VisitorsService {
       throw new NotFoundException(`Record with ID ${id} not found`);
     }
 
-    // Delete linked CeoNote if it exists
     if (entity.related_note_id) {
-      const note = await this.ceoNoteRepository.findOne({ where: { id: entity.related_note_id } });
-      if (note) {
-        await this.ceoNoteRepository.remove(note);
-      }
+      await this.ceoNotesService.remove(entity.related_note_id, currentUser);
+      return { message: "Record and linked CEO note deleted successfully" };
     }
 
-    // Delete the entity itself
     await repository.remove(entity);
-    
-    // Return appropriate message
     const entityType = type || (repository === this.callRepository ? "call" : repository === this.whatsappRepository ? "whatsapp" : "visitor");
     const typeName = entityType.charAt(0).toUpperCase() + entityType.slice(1);
     return { message: `${typeName} deleted successfully` };
