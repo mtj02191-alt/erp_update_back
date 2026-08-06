@@ -13,6 +13,7 @@ export class CeoNotesQueryDto {
   @IsOptional()
   @Type(() => Number)
   @IsInt()
+  @Min(1)
   pageSize?: number = 10;
 
   @IsOptional()

@@ -388,16 +388,12 @@ export class CeoNotesService {
       const note = await this.findOne(id);
       await this.auditService.log(note, currentUser, "deleted", note, null, manager);
 
-      if (note.category === CeoNoteCategory.PROJECT_COMMAND_SHEETS) {
-        // The CeoNote has a OneToOne relation pointing to ProjectCommandSheet via a join column.
-        // Clear the relation first so the ProjectCommandSheet can be safely deleted.
-        await manager
-          .createQueryBuilder()
-          .relation(CeoNote, "project_command_sheet_detail")
-          .of(note.id)
-          .set(null);
-      }
-
+      // Note: all category OneToOne relations (meeting/approval/followUp/waitingResponse/
+      // project_command_sheet/visitor/call/whatsapp) are owned by the CATEGORY entity via
+      // note_id (or related_note_id) with @JoinColumn + onDelete: CASCADE.
+      // We always explicitly delete category rows first below for consistency, and the
+      // FK cascade is a safety net. We do NOT touch relation() on CeoNote (the inverse
+      // side) because it does not own the FK column.
       await this.categoryService.deleteCategoryRecord(manager, note);
       await manager.getRepository(CeoNote).remove(note);
       return { message: "Note deleted successfully" };

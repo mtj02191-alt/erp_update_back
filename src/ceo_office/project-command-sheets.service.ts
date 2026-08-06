@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, Logger, BadRequestException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, SelectQueryBuilder } from "typeorm";
+import { Repository, SelectQueryBuilder, DataSource, EntityManager } from "typeorm";
 import { ProjectCommandSheet } from "./entities/project-command-sheet.entity";
 import { CreateProjectCommandSheetDto } from "./dto/create-project-command-sheet.dto";
 import { UpdateProjectCommandSheetDto } from "./dto/update-project-command-sheet.dto";
@@ -34,6 +34,7 @@ export class ProjectCommandSheetsService {
     private readonly tasksService: TasksService,
     private readonly notificationsService: NotificationsService,
     private readonly ceoNotesService: CeoNotesService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async create(
@@ -73,6 +74,22 @@ export class ProjectCommandSheetsService {
       next_steps: createProjectCommandSheetDto.next_steps,
       results: createProjectCommandSheetDto.results,
     };
+
+    // If caller provided an existing note_id, attach/update the existing CeoNote
+    if ((createProjectCommandSheetDto as any).note_id) {
+      const existingNote = await this.ceoNoteRepository.findOne({ where: { id: (createProjectCommandSheetDto as any).note_id } });
+      if (!existingNote) {
+        throw new NotFoundException(`CEO Note with ID ${(createProjectCommandSheetDto as any).note_id} not found`);
+      }
+      // Ensure the note is updated as a Project Command Sheet
+      notePayload.category = CeoNoteCategory.PROJECT_COMMAND_SHEETS;
+      const updatedNote = await this.ceoNotesService.update(
+        (createProjectCommandSheetDto as any).note_id,
+        notePayload,
+        currentUser,
+      );
+      return updatedNote.project_command_sheet_detail;
+    }
 
     const note = await this.ceoNotesService.create(notePayload, currentUser);
     return note.project_command_sheet_detail;
@@ -287,39 +304,51 @@ export class ProjectCommandSheetsService {
 
     const task = await this.tasksService.create(createTaskDto, currentUser);
 
-    // Set source and source_id on task
-    const taskToUpdate = await this.taskRepository.findOne({
-      where: { id: task.id },
+    // Wrap DB consistency updates (source, related_task_id) in a transaction
+    const updated = await this.dataSource.transaction(async (manager: EntityManager) => {
+      // Set source and source_id on task
+      const taskToUpdate = await manager.getRepository(Task).findOne({
+        where: { id: task.id },
+      });
+      let finalTask = task;
+      if (taskToUpdate) {
+        taskToUpdate.source = "project_command_sheet";
+        taskToUpdate.source_id = sheetId;
+        finalTask = await manager.getRepository(Task).save(taskToUpdate);
+      }
+
+      // Update sheet with related task id
+      sheet.related_task_id = finalTask.id;
+      const savedSheet = await manager.getRepository(ProjectCommandSheet).save(sheet);
+
+      return { task: finalTask, sheet: savedSheet };
     });
-    if (taskToUpdate) {
-      taskToUpdate.source = "project_command_sheet";
-      taskToUpdate.source_id = sheetId;
-      await this.taskRepository.save(taskToUpdate);
-    }
 
-    // Update sheet with related task id
-    sheet.related_task_id = task.id;
-    await this.projectCommandSheetRepository.save(sheet);
-
-    // Send notification to assigned users
+    // Send notification (side effect, outside the transaction so DB is committed first)
     const userIdsToNotify = createTaskDto.assigned_users;
     if (userIdsToNotify && userIdsToNotify.length > 0) {
-      await this.notificationsService.create(
-        {
-          title: "Project Command Sheet Converted to Task",
-          message: `Project "${sheet.project_name}" has been converted to a task and assigned to you.`,
-          type: NotificationType.INFO,
-          link: `/tasks/${task.id}`,
-          metadata: {
-            sheetId: sheetId,
-            taskId: task.id,
+      try {
+        await this.notificationsService.create(
+          {
+            title: "Project Command Sheet Converted to Task",
+            message: `Project "${sheet.project_name}" has been converted to a task and assigned to you.`,
+            type: NotificationType.INFO,
+            link: `/tasks/${updated.task.id}`,
+            metadata: {
+              sheetId: sheetId,
+              taskId: updated.task.id,
+            },
           },
-        },
-        userIdsToNotify,
-        currentUser,
-      );
+          userIdsToNotify,
+          currentUser,
+        );
+      } catch (notifyErr: any) {
+        this.logger.warn(
+          `Failed to send conversion notifications for sheet ${sheetId}: ${notifyErr?.message}`,
+        );
+      }
     }
 
-    return { task, sheet };
+    return updated;
   }
 }

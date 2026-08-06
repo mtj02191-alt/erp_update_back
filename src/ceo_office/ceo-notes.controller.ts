@@ -31,7 +31,7 @@ import { ProjectCommandSheetsService } from "./project-command-sheets.service";
 import { VisitorsService } from "./visitors.service";
 
 @Controller("ceo-notes")
-// @UseGuards(JwtGuard, RolesGuard)
+@UseGuards(JwtGuard, RolesGuard)
 export class CeoNotesController {
   constructor(private readonly ceoNotesService: CeoNotesService) {}
 
@@ -50,6 +50,7 @@ export class CeoNotesController {
   }
 
   @Get("instruction-register")
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
   getInstructionRegister(@Query() query: CeoNotesQueryDto) {
     return this.ceoNotesService.getInstructionRegister(query);
   }

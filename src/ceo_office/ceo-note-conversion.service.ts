@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from "@nestjs/common";
+import { Injectable, BadRequestException, Logger } from "@nestjs/common";
 import { EntityManager, In } from "typeorm";
 import { CeoNote, CeoNoteStatus } from "./entities/ceo-note.entity";
 import { User, Department } from "../users/user.entity";
@@ -8,6 +8,8 @@ import { EventEmitter2 } from "@nestjs/event-emitter";
 
 @Injectable()
 export class CeoNoteConversionService {
+  private readonly logger = new Logger(CeoNoteConversionService.name);
+
   constructor(
     private readonly auditService: CeoNoteAuditService,
     private readonly eventEmitter: EventEmitter2,
@@ -109,29 +111,37 @@ export class CeoNoteConversionService {
       manager,
     );
 
-    this.eventEmitter.emit("task.created", {
-      title: "CEO Note Converted to Task",
-      message: `A task for note \"${savedNote.title}\" has been created.`,
-      link: `/tasks/${savedTask.id}`,
-      metadata: {
-        noteId: savedNote.id,
-        taskId: savedTask.id,
-      },
-      userIds: assignedUsers,
-      user: currentUser,
-    });
+    try {
+      this.eventEmitter.emit("task.created", {
+        title: "CEO Note Converted to Task",
+        message: `A task for note \"${savedNote.title}\" has been created.`,
+        link: `/tasks/${savedTask.id}`,
+        metadata: {
+          noteId: savedNote.id,
+          taskId: savedTask.id,
+        },
+        userIds: assignedUsers,
+        user: currentUser,
+      });
+    } catch (eventErr: any) {
+      this.logger.warn(`task.created emit failed: ${eventErr?.message}`);
+    }
 
-    this.eventEmitter.emit("ceo_note.converted_to_task", {
-      title: "CEO Note Converted to Task",
-      message: `CEO note \"${savedNote.title}\" was converted to a task.`,
-      link: `/ceo-office/notes/${savedNote.id}`,
-      metadata: {
-        noteId: savedNote.id,
-        taskId: savedTask.id,
-      },
-      userIds: assignedUsers,
-      user: currentUser,
-    });
+    try {
+      this.eventEmitter.emit("ceo_note.converted_to_task", {
+        title: "CEO Note Converted to Task",
+        message: `CEO note \"${savedNote.title}\" was converted to a task.`,
+        link: `/ceo-office/notes/${savedNote.id}`,
+        metadata: {
+          noteId: savedNote.id,
+          taskId: savedTask.id,
+        },
+        userIds: assignedUsers,
+        user: currentUser,
+      });
+    } catch (eventErr: any) {
+      this.logger.warn(`ceo_note.converted_to_task emit failed: ${eventErr?.message}`);
+    }
 
     return { note: savedNote, task: savedTask };
   }

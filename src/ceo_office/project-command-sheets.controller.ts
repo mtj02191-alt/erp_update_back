@@ -22,7 +22,7 @@ import { CurrentUser } from "../auth/current-user.decorator";
 import { User } from "../users/user.entity";
 
 @Controller("project-command-sheets")
-// @UseGuards(JwtGuard, RolesGuard)
+@UseGuards(JwtGuard, RolesGuard)
 export class ProjectCommandSheetsController {
   constructor(
     private readonly projectCommandSheetsService: ProjectCommandSheetsService,

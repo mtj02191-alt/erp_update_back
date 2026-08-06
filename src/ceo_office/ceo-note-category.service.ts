@@ -288,7 +288,7 @@ export class CeoNoteCategoryService {
         results: dto.results || pcs.results,
         start_date: dto.start_date ? new Date(dto.start_date) : pcs.start_date,
         end_date: dto.end_date ? new Date(dto.end_date) : pcs.end_date,
-        status: dto.status || pcs.status,
+        status: dto.status || dto.pcs_status || pcs.status,
       });
       await manager.getRepository(ProjectCommandSheet).save(pcs);
       note.project_command_sheet_detail = pcs;
@@ -300,11 +300,11 @@ export class CeoNoteCategoryService {
         visitor = manager.getRepository(Visitor).create({ related_note_id: note.id });
       }
       Object.assign(visitor, {
-        visitor_name: note.related_person || visitor.visitor_name,
+        visitor_name: dto.visitor_name || note.related_person || visitor.visitor_name,
         organization: dto.organization || visitor.organization,
         purpose: dto.purpose || visitor.purpose,
-        meeting_with: dto.meeting_with || visitor.meeting_with,
-        department: dto.department || visitor.department,
+        meeting_with: dto.meeting_with || dto.visitor_meeting_with || visitor.meeting_with,
+        department: dto.department || dto.visitor_department || visitor.department,
         protocol_required: dto.protocol_required || visitor.protocol_required,
         expected_duration: dto.expected_duration || visitor.expected_duration,
         visitor_outcome: dto.visitor_outcome || visitor.visitor_outcome,

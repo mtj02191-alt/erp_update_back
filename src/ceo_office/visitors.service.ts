@@ -5,7 +5,7 @@ import {
   BadRequestException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { Repository, DataSource, EntityManager } from "typeorm";
 import { Visitor } from "./entities/visitor.entity";
 import { Call } from "./entities/call.entity";
 import { WhatsAppMessage } from "./entities/whatsapp.entity";
@@ -38,6 +38,7 @@ export class VisitorsService {
     private readonly tasksService: TasksService,
     private readonly notificationsService: NotificationsService,
     private readonly ceoNotesService: CeoNotesService,
+    private readonly dataSource: DataSource,
   ) {}
 
   private async validateRelatedNoteId(noteId?: number): Promise<number | null> {
@@ -465,49 +466,61 @@ export class VisitorsService {
 
     const task = await this.tasksService.create(createTaskDto, currentUser);
 
-    // Update task with source info
-    const taskToUpdate = await this.taskRepository.findOne({ where: { id: task.id } });
-    if (taskToUpdate) {
-      taskToUpdate.source = 'visitor';
-      taskToUpdate.source_id = id;
-      await this.taskRepository.save(taskToUpdate);
-    }
+    // Wrap DB consistency updates (source, related_task_id links) in a transaction
+    const updated = await this.dataSource.transaction(async (manager: EntityManager) => {
+      // Update task with source info
+      const taskToUpdate = await manager.getRepository(Task).findOne({ where: { id: task.id } });
+      let finalTask = task;
+      if (taskToUpdate) {
+        taskToUpdate.source = 'visitor';
+        taskToUpdate.source_id = id;
+        finalTask = await manager.getRepository(Task).save(taskToUpdate);
+      }
 
-    // Update the original entity with related task id
-    entity.related_task_id = task.id;
-    await repository.save(entity);
-    
-    // Update linked CeoNote's related_task_id (if any)
-    if (entity.related_note_id) {
-      const note = await this.ceoNoteRepository.findOne({
-        where: { id: entity.related_note_id }
-      });
-      if (note) {
-        note.related_task_id = task.id;
-        await this.ceoNoteRepository.save(note);
+      // Update the original entity with related task id
+      entity.related_task_id = finalTask.id;
+      const savedRecord = await manager.save(entity);
+
+      // Update linked CeoNote's related_task_id (if any)
+      if (entity.related_note_id) {
+        const note = await manager.getRepository(CeoNote).findOne({
+          where: { id: entity.related_note_id }
+        });
+        if (note) {
+          note.related_task_id = finalTask.id;
+          await manager.getRepository(CeoNote).save(note);
+        }
+      }
+
+      return { task: finalTask, record: savedRecord };
+    });
+
+    // Send notifications (side effect, outside the transaction so DB state is committed first)
+    const userIdsToNotify = createTaskDto.assigned_users;
+    if (userIdsToNotify && userIdsToNotify.length > 0) {
+      try {
+        await this.notificationsService.create(
+          {
+            title: 'Visitor/Call/WhatsApp Converted to Task',
+            message: `A new task has been created and assigned to you: ${title}`,
+            type: NotificationType.INFO,
+            link: `/tasks/${updated.task.id}`,
+            metadata: {
+              recordId: id,
+              type: entity.type,
+              taskId: updated.task.id,
+            },
+          },
+          userIdsToNotify,
+          currentUser,
+        );
+      } catch (notifyErr: any) {
+        this.logger.warn(
+          `Failed to send conversion notifications for record ${id}: ${notifyErr?.message}`,
+        );
       }
     }
 
-    // Send notifications
-    const userIdsToNotify = createTaskDto.assigned_users;
-    if (userIdsToNotify && userIdsToNotify.length > 0) {
-      await this.notificationsService.create(
-        {
-          title: 'Visitor/Call/WhatsApp Converted to Task',
-          message: `A new task has been created and assigned to you: ${title}`,
-          type: NotificationType.INFO,
-          link: `/tasks/${task.id}`,
-          metadata: {
-            recordId: id,
-            type: entity.type,
-            taskId: task.id,
-          },
-        },
-        userIdsToNotify,
-        currentUser,
-      );
-    }
-
-    return { task, record: entity };
+    return updated;
   }
 }

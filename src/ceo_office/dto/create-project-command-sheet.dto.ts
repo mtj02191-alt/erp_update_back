@@ -21,6 +21,9 @@ export class CreateProjectCommandSheetDto {
   @IsString()
   project_name: string;
 
+  @IsOptional()
+  note_id?: number;
+
   @IsString()
   @IsOptional()
   project_details?: string;
