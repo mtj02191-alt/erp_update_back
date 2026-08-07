@@ -7,6 +7,8 @@ import {
   IsNumber,
   IsObject,
   IsArray,
+  ValidateIf,
+  IsIn,
 } from "class-validator";
 import { CeoNoteCategory, CeoNoteStatus } from "../entities/ceo-note.entity";
 import { Department } from "../../users/user.entity";
@@ -43,6 +45,16 @@ export class CreateCeoNoteDto {
   @IsOptional()
   due_date?: string;
 
+  @ValidateIf((o) => o.category === CeoNoteCategory.EMAILS_AND_APPROVALS)
+  @IsIn([
+    CeoNoteStatus.WAITING_RESPONSE,
+    CeoNoteStatus.PENDING,
+    CeoNoteStatus.APPROVED,
+    CeoNoteStatus.REJECTED,
+    CeoNoteStatus.COMPLETED,
+    CeoNoteStatus.CLOSED,
+    CeoNoteStatus.CANCELLED,
+  ])
   @IsEnum(CeoNoteStatus)
   @IsOptional()
   status?: CeoNoteStatus;

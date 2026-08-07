@@ -111,6 +111,29 @@ export class CeoNotesService {
     return date;
   }
 
+  private readonly emailApprovalAllowedStatuses = [
+    CeoNoteStatus.WAITING_RESPONSE,
+    CeoNoteStatus.PENDING,
+    CeoNoteStatus.APPROVED,
+    CeoNoteStatus.REJECTED,
+    CeoNoteStatus.COMPLETED,
+    CeoNoteStatus.CLOSED,
+    CeoNoteStatus.CANCELLED,
+  ];
+
+  private normalizeStatusForCategory(
+    category?: CeoNoteCategory,
+    status?: CeoNoteStatus,
+  ): CeoNoteStatus | undefined {
+    if (category === CeoNoteCategory.EMAILS_AND_APPROVALS) {
+      if (status && this.emailApprovalAllowedStatuses.includes(status)) {
+        return status;
+      }
+      return CeoNoteStatus.WAITING_RESPONSE;
+    }
+    return status;
+  }
+
   private async setAssignedUsers(note: CeoNote, assignedUserIds?: (string | number)[]) {
     const numericUserIds = assignedUserIds?.map((id) => Number(id)).filter((id) => !isNaN(id)) || [];
 
@@ -132,6 +155,10 @@ export class CeoNotesService {
         created_by_id: currentUser?.id || null,
         date: this.safelyParseDate(createCeoNoteDto.date) || new Date(),
         due_date: this.safelyParseDate(createCeoNoteDto.due_date),
+        status: this.normalizeStatusForCategory(
+          createCeoNoteDto.category,
+          createCeoNoteDto.status,
+        ),
       };
 
       const note = this.ceoNoteRepository.create(noteData);
@@ -310,7 +337,30 @@ export class CeoNotesService {
       const filteredDto = Object.fromEntries(
         Object.entries(updateCeoNoteDto).filter(([, v]) => v !== null && v !== undefined),
       );
+      const finalCategory = filteredDto.category ?? note.category;
+
+      if (
+        finalCategory === CeoNoteCategory.EMAILS_AND_APPROVALS &&
+        filteredDto.status !== undefined &&
+        !this.emailApprovalAllowedStatuses.includes(filteredDto.status as CeoNoteStatus)
+      ) {
+        throw new Error(
+          `Invalid status for Emails & Approvals category: ${filteredDto.status}`,
+        );
+      }
+
       Object.assign(note, filteredDto);
+      if (filteredDto.status !== undefined) {
+        note.status = this.normalizeStatusForCategory(
+          finalCategory,
+          filteredDto.status as CeoNoteStatus,
+        );
+      } else if (
+        filteredDto.category === CeoNoteCategory.EMAILS_AND_APPROVALS &&
+        note.category !== CeoNoteCategory.EMAILS_AND_APPROVALS
+      ) {
+        note.status = CeoNoteStatus.WAITING_RESPONSE;
+      }
       if (updateCeoNoteDto.assigned_user_ids !== undefined) {
         await this.setAssignedUsers(note, updateCeoNoteDto.assigned_user_ids);
       }
