@@ -376,10 +376,27 @@ export class CeoNoteDashboardService {
     const totalPages = total === 0 ? 0 : Math.ceil(total / pageSize);
 
     const offset = (page - 1) * pageSize;
-    const rows = await this.ceoNoteRepository.query(
-      `SELECT * FROM (${combinedSql}) AS combined ORDER BY created_at ${sortOrder} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-      [...params, pageSize, offset],
-    );
+    const pagedRowsSql = `
+      WITH combined AS (${combinedSql}),
+           note_ids AS (
+             SELECT DISTINCT note_id
+             FROM combined
+             WHERE type = 'note' AND note_id IS NOT NULL
+           ),
+           deduped AS (
+             SELECT *
+             FROM combined c
+             WHERE c.type = 'note'
+                OR (c.type = 'project_command_sheet' AND (c.note_id IS NULL OR c.note_id::int NOT IN (SELECT note_id FROM note_ids)))
+                OR (c.type IN ('visitor','call','whatsapp') AND (c.related_note_id IS NULL OR c.related_note_id::int NOT IN (SELECT note_id FROM note_ids)))
+           )
+      SELECT * FROM deduped
+      ORDER BY created_at ${sortOrder}
+      LIMIT $${params.length + 1}
+      OFFSET $${params.length + 2}
+    `;
+
+    const rows = await this.ceoNoteRepository.query(pagedRowsSql, [...params, pageSize, offset]);
 
     const data = rows.map((row: any) => {
       if (typeof row.assigned_user_ids === "string") {
