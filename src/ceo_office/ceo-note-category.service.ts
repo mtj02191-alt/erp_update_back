@@ -38,7 +38,7 @@ export class CeoNoteCategoryService {
         approval_subject: dto.approval_subject || null,
         approval_reference_number: dto.approval_reference_number || null,
         approval_amount: dto.approval_amount || null,
-        approval_decision: dto.approval_decision || "pending",
+        approval_decision: dto.status || dto.approval_decision || "pending",
         approval_decision_remarks: dto.approval_decision_remarks || null,
         approval_history: dto.approval_history || null,
       });
@@ -78,7 +78,7 @@ export class CeoNoteCategoryService {
           dto.waiting_response_last_reminder_date
             ? new Date(dto.waiting_response_last_reminder_date)
             : null,
-        waiting_response_status: dto.waiting_response_status ||
+        waiting_response_status: dto.status || dto.waiting_response_status ||
           "waiting_response",
         waiting_response_remarks: dto.waiting_response_remarks || null,
         waiting_response_reminders: dto.waiting_response_reminders || [],
@@ -99,7 +99,7 @@ export class CeoNoteCategoryService {
         results: dto.results || null,
         start_date: dto.start_date ? new Date(dto.start_date) : null,
         end_date: dto.end_date ? new Date(dto.end_date) : null,
-        status: dto.pcs_status || "Pending",
+        status: dto.status || dto.pcs_status || "Pending",
         created_by_id: note.created_by_id,
       });
       await manager.getRepository(ProjectCommandSheet).save(pcs);
@@ -118,7 +118,7 @@ export class CeoNoteCategoryService {
         remarks: dto.remarks || null,
         visit_datetime: dto.visit_datetime ? new Date(dto.visit_datetime) : (note.date || new Date()),
         related_note_id: note.id,
-        status: "Pending",
+        status: dto.status || "Pending",
         created_by_id: note.created_by_id,
       });
       await manager.getRepository(Visitor).save(visitor);
@@ -137,7 +137,7 @@ export class CeoNoteCategoryService {
         remarks: dto.remarks || null,
         visit_datetime: dto.visit_datetime ? new Date(dto.visit_datetime) : (note.date || new Date()),
         related_note_id: note.id,
-        status: "Pending",
+        status: dto.status || "Pending",
         created_by_id: note.created_by_id,
       });
       await manager.getRepository(Call).save(call);
@@ -154,7 +154,7 @@ export class CeoNoteCategoryService {
         remarks: dto.remarks || null,
         visit_datetime: dto.visit_datetime ? new Date(dto.visit_datetime) : (note.date || new Date()),
         related_note_id: note.id,
-        status: "Pending Reply",
+        status: dto.status || "Pending Reply",
         created_by_id: note.created_by_id,
       });
       await manager.getRepository(WhatsAppMessage).save(whatsapp);
@@ -185,7 +185,10 @@ export class CeoNoteCategoryService {
           dto.meeting_discussion_points || meeting.meeting_discussion_points,
         meeting_decisions: dto.meeting_decisions || meeting.meeting_decisions,
         meeting_action_items:
-          dto.meeting_action_items || meeting.meeting_action_items,
+          (dto.meeting_action_items || meeting.meeting_action_items).map((item) => ({
+            ...item,
+            status: dto.status || item.status || 'pending',
+          })),
       });
       await manager.getRepository(Meeting).save(meeting);
       note.meeting_detail = meeting;
@@ -204,7 +207,7 @@ export class CeoNoteCategoryService {
         approval_reference_number:
           dto.approval_reference_number || approval.approval_reference_number,
         approval_amount: dto.approval_amount ?? approval.approval_amount,
-        approval_decision: dto.approval_decision || approval.approval_decision,
+        approval_decision: dto.status || dto.approval_decision || approval.approval_decision,
         approval_decision_remarks:
           dto.approval_decision_remarks || approval.approval_decision_remarks,
         approval_history: dto.approval_history || approval.approval_history,
@@ -261,7 +264,7 @@ export class CeoNoteCategoryService {
             ? new Date(dto.waiting_response_last_reminder_date)
             : waitingResponse.waiting_response_last_reminder_date,
         waiting_response_status:
-          dto.waiting_response_status || waitingResponse.waiting_response_status,
+          dto.status || dto.waiting_response_status || waitingResponse.waiting_response_status,
         waiting_response_remarks:
           dto.waiting_response_remarks || waitingResponse.waiting_response_remarks,
         waiting_response_reminders:

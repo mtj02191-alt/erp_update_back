@@ -119,19 +119,93 @@ export class CeoNotesService {
     CeoNoteStatus.COMPLETED,
     CeoNoteStatus.CLOSED,
     CeoNoteStatus.CANCELLED,
+    "request_clarification" as CeoNoteStatus,
   ];
 
   private normalizeStatusForCategory(
     category?: CeoNoteCategory,
-    status?: CeoNoteStatus,
+    status?: string,
   ): CeoNoteStatus | undefined {
     if (category === CeoNoteCategory.EMAILS_AND_APPROVALS) {
-      if (status && this.emailApprovalAllowedStatuses.includes(status)) {
-        return status;
+      if (status === "request_clarification") {
+        return CeoNoteStatus.PENDING;
+      }
+      if (status && this.emailApprovalAllowedStatuses.includes(status as CeoNoteStatus)) {
+        return status as CeoNoteStatus;
       }
       return CeoNoteStatus.WAITING_RESPONSE;
     }
-    return status;
+
+    if (category === CeoNoteCategory.WAITING_RESPONSE) {
+      if (status === "reminder_sent" || status === "received") {
+        return CeoNoteStatus.WAITING_RESPONSE;
+      }
+      if (status === "closed") {
+        return CeoNoteStatus.CLOSED;
+      }
+      return CeoNoteStatus.WAITING_RESPONSE;
+    }
+
+    if (category === CeoNoteCategory.PROJECT_COMMAND_SHEETS) {
+      if (status === "on_hold") {
+        return CeoNoteStatus.PENDING;
+      }
+      if (status && Object.values(CeoNoteStatus).includes(status as CeoNoteStatus)) {
+        return status as CeoNoteStatus;
+      }
+      return CeoNoteStatus.PENDING;
+    }
+
+    if (category === CeoNoteCategory.VISITORS) {
+      if (status === "waiting") {
+        return CeoNoteStatus.PENDING;
+      }
+      if (status === "cancelled") {
+        return CeoNoteStatus.CANCELLED;
+      }
+      if (status === "completed") {
+        return CeoNoteStatus.COMPLETED;
+      }
+      return CeoNoteStatus.PENDING;
+    }
+
+    if (category === CeoNoteCategory.CALLS) {
+      if (status === "follow_up_required") {
+        return CeoNoteStatus.PENDING;
+      }
+      if (status === "cancelled") {
+        return CeoNoteStatus.CANCELLED;
+      }
+      if (status === "completed") {
+        return CeoNoteStatus.COMPLETED;
+      }
+      return CeoNoteStatus.PENDING;
+    }
+
+    if (category === CeoNoteCategory.WHATSAPP) {
+      if (status === "pending_reply") {
+        return CeoNoteStatus.PENDING;
+      }
+      if (status === "replied") {
+        return CeoNoteStatus.COMPLETED;
+      }
+      if (status === "waiting_response") {
+        return CeoNoteStatus.WAITING_RESPONSE;
+      }
+      if (status === "closed") {
+        return CeoNoteStatus.CLOSED;
+      }
+      return CeoNoteStatus.PENDING;
+    }
+
+    if (category === CeoNoteCategory.MEETINGS) {
+      if (status && Object.values(CeoNoteStatus).includes(status as CeoNoteStatus)) {
+        return status as CeoNoteStatus;
+      }
+      return CeoNoteStatus.PENDING;
+    }
+
+    return status as CeoNoteStatus;
   }
 
   private async setAssignedUsers(note: CeoNote, assignedUserIds?: (string | number)[]) {

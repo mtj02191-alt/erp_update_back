@@ -54,10 +54,11 @@ export class CreateCeoNoteDto {
     CeoNoteStatus.COMPLETED,
     CeoNoteStatus.CLOSED,
     CeoNoteStatus.CANCELLED,
+    "request_clarification",
   ])
-  @IsEnum(CeoNoteStatus)
+  @IsString()
   @IsOptional()
-  status?: CeoNoteStatus;
+  status?: string;
 
   @IsString()
   @IsOptional()
