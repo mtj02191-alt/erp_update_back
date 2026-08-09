@@ -122,87 +122,143 @@ export class CeoNotesService {
     "request_clarification" as CeoNoteStatus,
   ];
 
+  private readonly emailApprovalAllowedStatusesNormalized = new Set(
+    this.emailApprovalAllowedStatuses.map((s) => this.normalizeStatusKey(s as string)),
+  );
+  private readonly ceoNoteStatusValuesNormalized = new Set(
+    Object.values(CeoNoteStatus).map((s) => this.normalizeStatusKey(s)),
+  );
+
+  private normalizeStatusKey(key?: string): string {
+    if (!key) return "";
+    return key
+      .toString()
+      .trim()
+      .toLowerCase()
+      .replace(/[\s\-]+/g, "_");
+  }
+
   private normalizeStatusForCategory(
     category?: CeoNoteCategory,
     status?: string,
   ): CeoNoteStatus | undefined {
+    const key = this.normalizeStatusKey(status);
+    if (!key) {
+      if (category === CeoNoteCategory.EMAILS_AND_APPROVALS) return CeoNoteStatus.WAITING_RESPONSE;
+      if (category === CeoNoteCategory.WAITING_RESPONSE) return CeoNoteStatus.WAITING_RESPONSE;
+      if (category === CeoNoteCategory.PROJECT_COMMAND_SHEETS) return CeoNoteStatus.PENDING;
+      if (category === CeoNoteCategory.VISITORS) return CeoNoteStatus.PENDING;
+      if (category === CeoNoteCategory.CALLS) return CeoNoteStatus.PENDING;
+      if (category === CeoNoteCategory.WHATSAPP) return CeoNoteStatus.PENDING;
+      if (category === CeoNoteCategory.MEETINGS) return CeoNoteStatus.PENDING;
+      return status as CeoNoteStatus;
+    }
+
     if (category === CeoNoteCategory.EMAILS_AND_APPROVALS) {
-      if (status === "request_clarification") {
+      if (key === "request_clarification" || key === "clarification_requested") {
         return CeoNoteStatus.PENDING;
       }
-      if (status && this.emailApprovalAllowedStatuses.includes(status as CeoNoteStatus)) {
-        return status as CeoNoteStatus;
+      if (this.emailApprovalAllowedStatusesNormalized.has(key)) {
+        const match = this.emailApprovalAllowedStatuses.find(
+          (s) => this.normalizeStatusKey(s as string) === key,
+        );
+        if (match) return match as CeoNoteStatus;
       }
       return CeoNoteStatus.WAITING_RESPONSE;
     }
 
     if (category === CeoNoteCategory.WAITING_RESPONSE) {
-      if (status === "reminder_sent" || status === "received") {
+      if (key === "reminder_sent" || key === "received") {
         return CeoNoteStatus.WAITING_RESPONSE;
       }
-      if (status === "closed") {
+      if (key === "closed") {
         return CeoNoteStatus.CLOSED;
       }
       return CeoNoteStatus.WAITING_RESPONSE;
     }
 
     if (category === CeoNoteCategory.PROJECT_COMMAND_SHEETS) {
-      if (status === "on_hold") {
+      if (key === "on_hold") {
         return CeoNoteStatus.PENDING;
       }
-      if (status && Object.values(CeoNoteStatus).includes(status as CeoNoteStatus)) {
-        return status as CeoNoteStatus;
+      if (this.ceoNoteStatusValuesNormalized.has(key)) {
+        const match = Object.values(CeoNoteStatus).find(
+          (s) => this.normalizeStatusKey(s) === key,
+        );
+        if (match) return match;
       }
       return CeoNoteStatus.PENDING;
     }
 
     if (category === CeoNoteCategory.VISITORS) {
-      if (status === "waiting") {
+      if (key === "waiting") {
         return CeoNoteStatus.PENDING;
       }
-      if (status === "cancelled") {
+      if (key === "cancelled" || key === "canceled") {
         return CeoNoteStatus.CANCELLED;
       }
-      if (status === "completed") {
+      if (key === "completed") {
         return CeoNoteStatus.COMPLETED;
       }
-      return CeoNoteStatus.PENDING;
-    }
-
-    if (category === CeoNoteCategory.CALLS) {
-      if (status === "follow_up_required") {
-        return CeoNoteStatus.PENDING;
-      }
-      if (status === "cancelled") {
-        return CeoNoteStatus.CANCELLED;
-      }
-      if (status === "completed") {
-        return CeoNoteStatus.COMPLETED;
-      }
-      return CeoNoteStatus.PENDING;
-    }
-
-    if (category === CeoNoteCategory.WHATSAPP) {
-      if (status === "pending_reply") {
-        return CeoNoteStatus.PENDING;
-      }
-      if (status === "replied") {
-        return CeoNoteStatus.COMPLETED;
-      }
-      if (status === "waiting_response") {
-        return CeoNoteStatus.WAITING_RESPONSE;
-      }
-      if (status === "closed") {
+      if (key === "closed") {
         return CeoNoteStatus.CLOSED;
       }
       return CeoNoteStatus.PENDING;
     }
 
-    if (category === CeoNoteCategory.MEETINGS) {
-      if (status && Object.values(CeoNoteStatus).includes(status as CeoNoteStatus)) {
-        return status as CeoNoteStatus;
+    if (category === CeoNoteCategory.CALLS) {
+      if (key === "follow_up_required" || key === "followup_required") {
+        return CeoNoteStatus.PENDING;
+      }
+      if (key === "cancelled" || key === "canceled") {
+        return CeoNoteStatus.CANCELLED;
+      }
+      if (key === "completed") {
+        return CeoNoteStatus.COMPLETED;
+      }
+      if (key === "closed") {
+        return CeoNoteStatus.CLOSED;
       }
       return CeoNoteStatus.PENDING;
+    }
+
+    if (category === CeoNoteCategory.WHATSAPP) {
+      if (key === "pending_reply" || key === "pendingreply") {
+        return CeoNoteStatus.PENDING;
+      }
+      if (key === "replied") {
+        return CeoNoteStatus.COMPLETED;
+      }
+      if (key === "waiting_response") {
+        return CeoNoteStatus.WAITING_RESPONSE;
+      }
+      if (key === "closed") {
+        return CeoNoteStatus.CLOSED;
+      }
+      if (key === "cancelled" || key === "canceled") {
+        return CeoNoteStatus.CANCELLED;
+      }
+      if (key === "completed") {
+        return CeoNoteStatus.COMPLETED;
+      }
+      return CeoNoteStatus.PENDING;
+    }
+
+    if (category === CeoNoteCategory.MEETINGS) {
+      if (this.ceoNoteStatusValuesNormalized.has(key)) {
+        const match = Object.values(CeoNoteStatus).find(
+          (s) => this.normalizeStatusKey(s) === key,
+        );
+        if (match) return match;
+      }
+      return CeoNoteStatus.PENDING;
+    }
+
+    if (this.ceoNoteStatusValuesNormalized.has(key)) {
+      const match = Object.values(CeoNoteStatus).find(
+        (s) => this.normalizeStatusKey(s) === key,
+      );
+      if (match) return match;
     }
 
     return status as CeoNoteStatus;
@@ -240,7 +296,9 @@ export class CeoNotesService {
       const savedNote = await manager.getRepository(CeoNote).save(note);
 
       await this.auditService.log(savedNote, currentUser, "created", null, savedNote, manager);
-      await this.categoryService.createCategoryRecord(manager, savedNote, createCeoNoteDto);
+      // Ensure category records receive the normalized (authoritative) status
+      const createDtoWithStatus = { ...createCeoNoteDto, status: noteData.status };
+      await this.categoryService.createCategoryRecord(manager, savedNote, createDtoWithStatus);
       await manager.getRepository(CeoNote).save(savedNote);
 
       if (savedNote.assigned_user_ids && savedNote.assigned_user_ids.length > 0) {
@@ -482,7 +540,9 @@ export class CeoNotesService {
         );
       }
 
-      await this.categoryService.updateCategoryRecord(manager, updatedNote, updateCeoNoteDto);
+      // Ensure category update uses the authoritative, normalized note status
+      const updateDtoWithStatus = { ...updateCeoNoteDto, status: updatedNote.status };
+      await this.categoryService.updateCategoryRecord(manager, updatedNote, updateDtoWithStatus);
       await manager.getRepository(CeoNote).save(updatedNote);
 
       const newAssignedUserIds = updatedNote.assigned_user_ids || [];
@@ -536,6 +596,11 @@ export class CeoNotesService {
         },
         currentUser,
       );
+
+      // Ensure category-specific record reflects the authoritative note status
+      const updateDtoWithStatus = { status: updatedNote.status };
+      await this.categoryService.updateCategoryRecord(manager, updatedNote, updateDtoWithStatus);
+
       return this.findOne(updatedNote.id);
     });
   }
@@ -600,6 +665,11 @@ export class CeoNotesService {
         convertToTaskDto,
         currentUser,
       );
+
+      // Sync category record to the note's updated status
+      const updateDtoWithStatus = { status: result.note.status };
+      await this.categoryService.updateCategoryRecord(manager, result.note, updateDtoWithStatus);
+
       return {
         note: await this.findOne(result.note.id),
         task: result.task,

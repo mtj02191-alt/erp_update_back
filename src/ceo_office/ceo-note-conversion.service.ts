@@ -5,6 +5,7 @@ import { User, Department } from "../users/user.entity";
 import { Task, TaskPriority, TaskWorkflowType, TaskType } from "../tasks/entities/task.entity";
 import { CeoNoteAuditService } from "./ceo-note-audit.service";
 import { EventEmitter2 } from "@nestjs/event-emitter";
+import { CeoNoteCategoryService } from "./ceo-note-category.service";
 
 @Injectable()
 export class CeoNoteConversionService {
@@ -13,6 +14,7 @@ export class CeoNoteConversionService {
   constructor(
     private readonly auditService: CeoNoteAuditService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly categoryService: CeoNoteCategoryService,
   ) {}
 
   private async getAssignedUsersMeta(
@@ -110,6 +112,13 @@ export class CeoNoteConversionService {
       { note: savedNote, task_id: savedTask.id },
       manager,
     );
+
+    // Sync category record status after conversion
+    try {
+      await this.categoryService.updateCategoryRecord(manager, savedNote, { status: savedNote.status });
+    } catch (err) {
+      this.logger.warn(`Category sync after conversion failed for note ${savedNote.id}: ${err?.message || String(err)}`);
+    }
 
     try {
       this.eventEmitter.emit("task.created", {

@@ -4,6 +4,7 @@ import { CeoNote, CeoNoteStatus } from "./entities/ceo-note.entity";
 import { Approval } from "./entities/approval.entity";
 import { User } from "../users/user.entity";
 import { CeoNoteAuditService } from "./ceo-note-audit.service";
+import { CeoNoteCategoryService } from "./ceo-note-category.service";
 import { EventEmitter2 } from "@nestjs/event-emitter";
 
 @Injectable()
@@ -11,6 +12,7 @@ export class CeoNoteApprovalService {
   constructor(
     private readonly auditService: CeoNoteAuditService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly categoryService: CeoNoteCategoryService,
   ) {}
 
   async approve(
@@ -61,6 +63,17 @@ export class CeoNoteApprovalService {
       updatedNote,
       manager,
     );
+
+    // Sync category record status and approval decision
+    try {
+      const mappedDecision = payload.decision === 'clarification_requested' ? 'request_clarification' : payload.decision === 'approved' ? 'approved' : payload.decision === 'rejected' ? 'rejected' : undefined;
+      const updateDto: any = { status: updatedNote.status };
+      if (mappedDecision) updateDto.approval_decision = mappedDecision;
+      await this.categoryService.updateCategoryRecord(manager, updatedNote, updateDto);
+    } catch (err) {
+      // Do not fail approval if category sync fails; log via event emitter
+      this.eventEmitter.emit('ceo_note.category_sync_failed', { noteId: updatedNote.id, error: err?.message || String(err) });
+    }
 
     const userIdsToNotify = [] as number[];
     if (note.created_by_id) {

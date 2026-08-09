@@ -12,6 +12,47 @@ import { WhatsAppMessage } from "./entities/whatsapp.entity";
 
 @Injectable()
 export class CeoNoteCategoryService {
+  private hasStatusField(dto: any): boolean {
+    return dto !== null && dto !== undefined && dto.status !== undefined && dto.status !== null;
+  }
+
+  private mapNoteStatusToCategoryStatus(category: string, status: string) {
+    // Normalize note status (CeoNoteStatus) into category-specific status values
+    // Keep mappings conservative to avoid invalid enum values in category tables.
+    const s = (status || '').toString();
+    switch (category) {
+      case 'emails_and_approvals':
+        if (s === 'approved') return 'approved';
+        if (s === 'rejected') return 'rejected';
+        // default
+        return 'pending';
+      case 'waiting_response':
+        if (s === 'waiting_response') return 'waiting_response';
+        if (s === 'closed') return 'closed';
+        // default
+        return 'waiting_response';
+      case 'project_command_sheets':
+        if (s === 'in_progress') return 'In Progress';
+        if (s === 'completed') return 'Completed';
+        if (s === 'closed') return 'Closed';
+        return 'Pending';
+      case 'visitors':
+      case 'calls':
+        if (s === 'completed') return 'Completed';
+        if (s === 'cancelled') return 'Cancelled';
+        if (s === 'closed') return 'Closed';
+        return 'Pending';
+      case 'whatsapp':
+        if (s === 'completed') return 'Completed';
+        if (s === 'waiting_response') return 'Pending Reply';
+        if (s === 'cancelled') return 'Cancelled';
+        if (s === 'closed') return 'Closed';
+        return 'Pending Reply';
+      default:
+        return status;
+    }
+  }
+
   async createCategoryRecord(
     manager: EntityManager,
     note: CeoNote,
@@ -31,6 +72,7 @@ export class CeoNoteCategoryService {
       await manager.getRepository(Meeting).save(meeting);
       note.meeting_detail = meeting;
     } else if (category === CeoNoteCategory.EMAILS_AND_APPROVALS) {
+      const mappedApprovalDecision = this.hasStatusField(dto) ? this.mapNoteStatusToCategoryStatus(category, dto.status) : undefined;
       const approval = manager.getRepository(Approval).create({
         note_id: note.id,
         approval_type: dto.approval_type || null,
@@ -38,7 +80,7 @@ export class CeoNoteCategoryService {
         approval_subject: dto.approval_subject || null,
         approval_reference_number: dto.approval_reference_number || null,
         approval_amount: dto.approval_amount || null,
-        approval_decision: dto.status || dto.approval_decision || "pending",
+        approval_decision: mappedApprovalDecision ?? dto.approval_decision ?? "pending",
         approval_decision_remarks: dto.approval_decision_remarks || null,
         approval_history: dto.approval_history || null,
       });
@@ -64,6 +106,7 @@ export class CeoNoteCategoryService {
       await manager.getRepository(FollowUp).save(followUp);
       note.follow_up_detail = followUp;
     } else if (category === CeoNoteCategory.WAITING_RESPONSE) {
+      const mappedWaitingStatus = this.hasStatusField(dto) ? this.mapNoteStatusToCategoryStatus(category, dto.status) : undefined;
       const waitingResponse = manager.getRepository(WaitingResponse).create({
         note_id: note.id,
         waiting_response_requested_from:
@@ -78,7 +121,7 @@ export class CeoNoteCategoryService {
           dto.waiting_response_last_reminder_date
             ? new Date(dto.waiting_response_last_reminder_date)
             : null,
-        waiting_response_status: dto.status || dto.waiting_response_status ||
+        waiting_response_status: mappedWaitingStatus ?? dto.waiting_response_status ??
           "waiting_response",
         waiting_response_remarks: dto.waiting_response_remarks || null,
         waiting_response_reminders: dto.waiting_response_reminders || [],
@@ -99,7 +142,7 @@ export class CeoNoteCategoryService {
         results: dto.results || null,
         start_date: dto.start_date ? new Date(dto.start_date) : null,
         end_date: dto.end_date ? new Date(dto.end_date) : null,
-        status: dto.status || dto.pcs_status || "Pending",
+        status: this.hasStatusField(dto) ? this.mapNoteStatusToCategoryStatus(category, dto.status) : (dto.pcs_status ?? "Pending"),
         created_by_id: note.created_by_id,
       });
       await manager.getRepository(ProjectCommandSheet).save(pcs);
@@ -118,7 +161,7 @@ export class CeoNoteCategoryService {
         remarks: dto.remarks || null,
         visit_datetime: dto.visit_datetime ? new Date(dto.visit_datetime) : (note.date || new Date()),
         related_note_id: note.id,
-        status: dto.status || "Pending",
+        status: this.hasStatusField(dto) ? this.mapNoteStatusToCategoryStatus(category, dto.status) : "Pending",
         created_by_id: note.created_by_id,
       });
       await manager.getRepository(Visitor).save(visitor);
@@ -137,7 +180,7 @@ export class CeoNoteCategoryService {
         remarks: dto.remarks || null,
         visit_datetime: dto.visit_datetime ? new Date(dto.visit_datetime) : (note.date || new Date()),
         related_note_id: note.id,
-        status: dto.status || "Pending",
+        status: this.hasStatusField(dto) ? this.mapNoteStatusToCategoryStatus(category, dto.status) : "Pending",
         created_by_id: note.created_by_id,
       });
       await manager.getRepository(Call).save(call);
@@ -154,7 +197,7 @@ export class CeoNoteCategoryService {
         remarks: dto.remarks || null,
         visit_datetime: dto.visit_datetime ? new Date(dto.visit_datetime) : (note.date || new Date()),
         related_note_id: note.id,
-        status: dto.status || "Pending Reply",
+        status: this.hasStatusField(dto) ? this.mapNoteStatusToCategoryStatus(category, dto.status) : "Pending Reply",
         created_by_id: note.created_by_id,
       });
       await manager.getRepository(WhatsAppMessage).save(whatsapp);
@@ -187,7 +230,7 @@ export class CeoNoteCategoryService {
         meeting_action_items:
           (dto.meeting_action_items || meeting.meeting_action_items).map((item) => ({
             ...item,
-            status: dto.status || item.status || 'pending',
+            status: this.hasStatusField(dto) ? this.mapNoteStatusToCategoryStatus(category, dto.status) : (item.status ?? 'pending'),
           })),
       });
       await manager.getRepository(Meeting).save(meeting);
@@ -207,7 +250,7 @@ export class CeoNoteCategoryService {
         approval_reference_number:
           dto.approval_reference_number || approval.approval_reference_number,
         approval_amount: dto.approval_amount ?? approval.approval_amount,
-        approval_decision: dto.status || dto.approval_decision || approval.approval_decision,
+        approval_decision: this.hasStatusField(dto) ? this.mapNoteStatusToCategoryStatus(category, dto.status) : (dto.approval_decision ?? approval.approval_decision),
         approval_decision_remarks:
           dto.approval_decision_remarks || approval.approval_decision_remarks,
         approval_history: dto.approval_history || approval.approval_history,
@@ -264,7 +307,7 @@ export class CeoNoteCategoryService {
             ? new Date(dto.waiting_response_last_reminder_date)
             : waitingResponse.waiting_response_last_reminder_date,
         waiting_response_status:
-          dto.status || dto.waiting_response_status || waitingResponse.waiting_response_status,
+          this.hasStatusField(dto) ? this.mapNoteStatusToCategoryStatus(category, dto.status) : (dto.waiting_response_status ?? waitingResponse.waiting_response_status),
         waiting_response_remarks:
           dto.waiting_response_remarks || waitingResponse.waiting_response_remarks,
         waiting_response_reminders:
@@ -291,7 +334,7 @@ export class CeoNoteCategoryService {
         results: dto.results || pcs.results,
         start_date: dto.start_date ? new Date(dto.start_date) : pcs.start_date,
         end_date: dto.end_date ? new Date(dto.end_date) : pcs.end_date,
-        status: dto.status || dto.pcs_status || pcs.status,
+        status: this.hasStatusField(dto) ? this.mapNoteStatusToCategoryStatus(category, dto.status) : (dto.pcs_status ?? pcs.status),
       });
       await manager.getRepository(ProjectCommandSheet).save(pcs);
       note.project_command_sheet_detail = pcs;
@@ -312,7 +355,7 @@ export class CeoNoteCategoryService {
         expected_duration: dto.expected_duration || visitor.expected_duration,
         visitor_outcome: dto.visitor_outcome || visitor.visitor_outcome,
         visit_datetime: dto.visit_datetime ? new Date(dto.visit_datetime) : visitor.visit_datetime,
-        status: dto.status || visitor.status,
+        status: this.hasStatusField(dto) ? this.mapNoteStatusToCategoryStatus(category, dto.status) : visitor.status,
       });
       await manager.getRepository(Visitor).save(visitor);
       note.visitor_detail = visitor;
@@ -332,7 +375,7 @@ export class CeoNoteCategoryService {
         follow_up_required: dto.follow_up_required || call.follow_up_required,
         follow_up_date: dto.follow_up_date ? new Date(dto.follow_up_date) : call.follow_up_date,
         visit_datetime: dto.visit_datetime ? new Date(dto.visit_datetime) : call.visit_datetime,
-        status: dto.status || call.status,
+        status: this.hasStatusField(dto) ? this.mapNoteStatusToCategoryStatus(category, dto.status) : call.status,
       });
       await manager.getRepository(Call).save(call);
       note.call_detail = call;
@@ -353,7 +396,7 @@ export class CeoNoteCategoryService {
         attachment_url: dto.attachment_url || whatsapp.attachment_url,
         response_status: dto.response_status || whatsapp.response_status,
         visit_datetime: dto.visit_datetime ? new Date(dto.visit_datetime) : whatsapp.visit_datetime,
-        status: dto.status || whatsapp.status,
+        status: this.hasStatusField(dto) ? this.mapNoteStatusToCategoryStatus(category, dto.status) : whatsapp.status,
       });
       await manager.getRepository(WhatsAppMessage).save(whatsapp);
       note.whatsapp_detail = whatsapp;
