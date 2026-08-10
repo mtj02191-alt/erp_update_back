@@ -46,7 +46,7 @@ import { CeoOfficeModule } from "./ceo_office/ceo-office.module";
       // password: process.env.DB_PASSWORD,
       // database: process.env.DB_NAME,
 
-      url: process.env.DATABASE_URL || '${{ Postgres.DATABASE_PRIVATE_URL }}',
+      url: process.env.DATABASE_URL || 'postgresql://postgres:FmhiczxTjYWBXOlnjevdEtCHlsYwNWuR@postgres.railway.internal:5432/railway',
       ssl: process.env.SSL === 'production',
       autoLoadEntities: true,
       synchronize: true,
