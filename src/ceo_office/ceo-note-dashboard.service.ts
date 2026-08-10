@@ -26,7 +26,7 @@ export class CeoNoteDashboardService {
   private applyFiltersToQuery(qb: any, query: CeoNotesQueryDto) {
     if (query.search) {
       qb.andWhere(
-        `(note.title ILIKE :search OR note.details ILIKE :search OR note.category ILIKE :search)`,
+        `(note.title ILIKE :search OR note.details ILIKE :search OR note.category::text ILIKE :search)`,
         { search: `%${query.search}%` },
       );
     }
@@ -218,10 +218,11 @@ export class CeoNoteDashboardService {
           note.id AS record_id
         FROM ceo_notes note`,
         [
-          () => ({ clause: query.search ? `(note.title ILIKE $n OR note.details ILIKE $n OR note.category ILIKE $n)` : "", value: query.search ? `%${query.search}%` : undefined }),
+          () => ({ clause: query.search ? `(note.title ILIKE $n OR note.details ILIKE $n OR note.category::text ILIKE $n)` : "", value: query.search ? `%${query.search}%` : undefined }),
           () => ({ clause: query.category ? `note.category = $n` : "", value: query.category }),
           () => ({ clause: query.status ? `note.status = $n` : "", value: query.status }),
           () => ({ clause: query.department ? `note.department = $n` : "", value: query.department }),
+          () => ({ clause: query.priority ? `note.priority = $n` : "", value: query.priority }),
           () => ({ clause: query.start_date ? `note.created_at >= $n` : "", value: query.start_date ? new Date(query.start_date) : undefined }),
           () => ({ clause: query.end_date ? `note.created_at <= $n` : "", value: query.end_date ? new Date(query.end_date) : undefined }),
           () => ({ clause: query.assigned_user_id ? `$n = ANY(note.assigned_user_ids)` : "", value: query.assigned_user_id }),
