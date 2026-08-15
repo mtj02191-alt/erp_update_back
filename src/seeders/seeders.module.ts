@@ -22,13 +22,13 @@ import { Route } from "../dms/geographic/routes/entities/route.entity";
     }),
     TypeOrmModule.forRoot({
       type: "postgres",
-      // host: process.env.DB_HOST,
-      // port: parseInt(process.env.DB_PORT),
-      // username: process.env.DB_USERNAME,
-      // password: process.env.DB_PASSWORD,
-      // database: process.env.DB_NAME,
-      url: process.env.DATABASE_URL || 'postgresql://postgres:FmhiczxTjYWBXOlnjevdEtCHlsYwNWuR@postgres.railway.internal:5432/railway',
-      ssl: process.env.SSL === 'production',
+      host: process.env.DB_HOST,
+      port: parseInt(process.env.DB_PORT),
+      username: process.env.DB_USERNAME,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+      // url: process.env.DATABASE_URL || 'postgresql://postgres:FmhiczxTjYWBXOlnjevdEtCHlsYwNWuR@postgres.railway.internal:5432/railway',
+      // ssl: process.env.SSL === 'production',
 
 
       // Explicitly register ONLY the entities needed for seeding
