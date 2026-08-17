@@ -7,6 +7,7 @@ import { DonationBox } from "../dms/donation_box/entities/donation-box.entity";
 import { Donor } from "../dms/donor/entities/donor.entity";
 import { Event } from "../dms/events/entities/event.entity";
 import { Campaign } from "../dms/campaigns/entities/campaign.entity";
+import { RecurringDonation } from "../donations/recurring_donations/entities/recurring-donation.entity";
 import { PermissionsModule } from "../permissions/permissions.module";
 import { DashboardAggregateService } from "./dashboard-aggregate.service";
 import { DashboardController } from "./dashboard.controller";
@@ -20,6 +21,7 @@ import { DashboardController } from "./dashboard.controller";
       Donor,
       Event,
       Campaign,
+      RecurringDonation,
     ]),
     JwtModule.register({
       secret: process.env.JWT_SECRET || "your-secret-key",

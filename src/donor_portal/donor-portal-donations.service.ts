@@ -72,7 +72,9 @@ export class DonorPortalDonationsService {
     donationId: number,
   ): Promise<DonorPortalTrackerPayload[]> {
     const fullTrackers =
-      await this.progressTrackersService.getAllTrackersByDonationId(donationId);
+      await this.progressTrackersService.getAllTrackersByDonationId(
+        donationId,
+      );
     const donorVisibleTrackers = (fullTrackers || []).filter(
       (tr: any) => tr?.donor_visible === true,
     );
@@ -89,9 +91,7 @@ export class DonorPortalDonationsService {
           }
         : null,
       steps: (tr.steps || [])
-        .filter(
-          (s: any) => s?.donor_visible === true && s?.is_archived !== true,
-        )
+        .filter((s: any) => s?.donor_visible === true && s?.is_archived !== true)
         .map((s: any) => ({
           id: s.id,
           step_order: s.step_order,
@@ -181,8 +181,9 @@ export class DonorPortalDonationsService {
 
   async getForDonor(donorId: number, donationId: number) {
     const donation = await this.assertDonorDonation(donorId, donationId);
-    const progress_trackers =
-      await this.buildDonorPortalTrackersPayload(donationId);
+    const progress_trackers = await this.buildDonorPortalTrackersPayload(
+      donationId,
+    );
     return {
       ...donation,
       progress_trackers,

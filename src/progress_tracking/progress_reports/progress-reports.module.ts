@@ -10,11 +10,7 @@ import { ProgressReportsService } from "./progress-reports.service";
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([
-      Donation,
-      ProgressWorkflowTemplate,
-      ProgressTracker,
-    ]),
+    TypeOrmModule.forFeature([Donation, ProgressWorkflowTemplate, ProgressTracker]),
     JwtModule.register({
       secret: process.env.JWT_SECRET || "your-secret-key",
       signOptions: { expiresIn: "24h" },
@@ -26,3 +22,4 @@ import { ProgressReportsService } from "./progress-reports.service";
   exports: [ProgressReportsService],
 })
 export class ProgressReportsModule {}
+

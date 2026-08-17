@@ -2,6 +2,9 @@ import {
   Injectable,
   ConflictException,
   NotFoundException,
+  Logger,
+  HttpException,
+  HttpStatus,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
@@ -12,9 +15,20 @@ import {
   FilterPayload,
 } from "../utils/filters/common-filter.util";
 import * as bcrypt from "bcrypt";
+import * as crypto from "crypto";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
 import { UpdateUserWithPermissionsDto } from "./dto/update-user-with-permissions.dto";
+import {
+  UserGeographicContext,
+  USER_GEOGRAPHIC_SELECT,
+} from "./user-geographic.types";
+import { GeographicAssignmentService } from "../dms/geographic/geographic-assignment/geographic-assignment.service";
+import {
+  decryptDonorPassword,
+  encryptDonorPassword,
+} from "../utils/crypto/donor-password-vault";
+import { EmailService } from "../email/email.service";
 
 interface PaginationOptions {
   page: number;
@@ -29,6 +43,7 @@ interface PaginationOptions {
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
   // Define searchable columns for user search
   private readonly searchableColumns = ["first_name", "last_name", "email"];
 
@@ -37,7 +52,47 @@ export class UsersService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(PermissionsEntity)
     private readonly permissionsRepository: Repository<PermissionsEntity>,
+    private readonly geographicAssignmentService: GeographicAssignmentService,
+    private readonly emailService: EmailService,
   ) {}
+
+  pickGeographicContext(
+    user: Pick<
+      User,
+      | "assigned_countries"
+      | "assigned_regions"
+      | "assigned_districts"
+      | "assigned_tehsils"
+      | "assigned_cities"
+      | "assigned_routes"
+      | "geographic_off"
+      | "manager_id"
+    > | null | undefined,
+  ): UserGeographicContext {
+    return {
+      assigned_countries: user?.assigned_countries ?? null,
+      assigned_regions: user?.assigned_regions ?? null,
+      assigned_districts: user?.assigned_districts ?? null,
+      assigned_tehsils: user?.assigned_tehsils ?? null,
+      assigned_cities: user?.assigned_cities ?? null,
+      assigned_routes: user?.assigned_routes ?? null,
+      geographic_off: user?.geographic_off === true,
+      manager_id: user?.manager_id ?? null,
+    };
+  }
+
+  async getGeographicContextByUserId(
+    userId: number,
+  ): Promise<UserGeographicContext | null> {
+    if (!userId || userId === -1) return null;
+    const user = await this.userRepository
+      .createQueryBuilder("user")
+      .select([...USER_GEOGRAPHIC_SELECT])
+      .where("user.id = :id", { id: userId })
+      .getOne();
+    if (!user) return null;
+    return this.pickGeographicContext(user);
+  }
 
   async create(
     email: string,
@@ -53,9 +108,12 @@ export class UsersService {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
+    const enc = encryptDonorPassword(password);
     const user = this.userRepository.create({
       email,
       password: hashedPassword,
+      password_enc: enc.payload,
+      password_enc_version: enc.version,
       department,
       role,
     });
@@ -82,6 +140,106 @@ export class UsersService {
     }
 
     return user;
+  }
+
+  private getLocalDateKey(date = new Date()): string {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+
+  private generateTemporaryPassword(): string {
+    const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+    const lower = "abcdefghijkmnopqrstuvwxyz";
+    const digits = "23456789";
+    const special = "!@#$%&*";
+    const pick = (chars: string) => chars[crypto.randomInt(0, chars.length)];
+    const base = [
+      pick(upper),
+      pick(lower),
+      pick(digits),
+      pick(special),
+      ...Array.from({ length: 8 }, () =>
+        pick(upper + lower + digits + special),
+      ),
+    ];
+    for (let i = base.length - 1; i > 0; i -= 1) {
+      const j = crypto.randomInt(0, i + 1);
+      [base[i], base[j]] = [base[j], base[i]];
+    }
+    return base.join("");
+  }
+
+  /**
+   * Forgot password: if email exists, generate a temporary password,
+   * save it, and email it. Always returns a generic message (no email enumeration).
+   * Max 5 requests per calendar day per account.
+   */
+  async forgotPassword(email: string): Promise<{ message: string }> {
+    const genericMessage =
+      "If an account exists for this email, a new password has been sent.";
+    const maxPerDay = 5;
+
+    const normalizedEmail = String(email || "")
+      .trim()
+      .toLowerCase();
+    if (!normalizedEmail) {
+      return { message: genericMessage };
+    }
+
+    const user = await this.userRepository.findOne({
+      where: { email: normalizedEmail, is_archived: false },
+    });
+
+    if (!user || user.isActive === false) {
+      return { message: genericMessage };
+    }
+
+    const today = this.getLocalDateKey();
+    const resetDay =
+      user.password_reset_day != null
+        ? String(user.password_reset_day).slice(0, 10)
+        : null;
+    const count =
+      resetDay === today ? Number(user.password_reset_count || 0) : 0;
+
+    if (count >= maxPerDay) {
+      throw new HttpException(
+        "You have reached the maximum of 5 password reset requests for today. Please try again tomorrow.",
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    const plainPassword = this.generateTemporaryPassword();
+    const passwordFields = await this.buildPasswordFields(plainPassword);
+    Object.assign(user, passwordFields, {
+      password_reset_day: today,
+      password_reset_count: count + 1,
+    });
+    await this.userRepository.save(user);
+
+    const sent = await this.emailService.sendTemporaryPasswordEmail({
+      to: user.email,
+      userName:
+        [user.first_name, user.last_name].filter(Boolean).join(" ") ||
+        user.email,
+      temporaryPassword: plainPassword,
+    });
+
+    if (!sent) {
+      this.logger.error(
+        `Password was reset for ${user.email} but email failed to send`,
+      );
+      throw new ConflictException(
+        "Could not send email. Please try again later or contact support.",
+      );
+    }
+
+    this.logger.log(
+      `Temporary password emailed to ${user.email} (reset ${count + 1}/${maxPerDay} today)`,
+    );
+    return { message: genericMessage };
   }
 
   async seedUsers(): Promise<void> {
@@ -150,13 +308,11 @@ export class UsersService {
     if (existingUser) {
       throw new ConflictException("Email already exists");
     }
-    const hashedPassword = await bcrypt.hash(
-      createUserDto.password || "defaultPassword123",
-      10,
-    );
+    const plainPassword = createUserDto.password || "defaultPassword123";
+    const passwordFields = await this.buildPasswordFields(plainPassword);
     const user = this.userRepository.create({
       ...createUserDto,
-      password: hashedPassword,
+      ...passwordFields,
     });
     return await this.userRepository.save(user);
   }
@@ -238,6 +394,69 @@ export class UsersService {
       throw new NotFoundException("User not found");
     }
     return user;
+  }
+
+  private hasGeographicAssignments(user: User): boolean {
+    return (
+      (user.assigned_countries?.length ?? 0) > 0 ||
+      (user.assigned_regions?.length ?? 0) > 0 ||
+      (user.assigned_districts?.length ?? 0) > 0 ||
+      (user.assigned_tehsils?.length ?? 0) > 0 ||
+      (user.assigned_cities?.length ?? 0) > 0 ||
+      (user.assigned_routes?.length ?? 0) > 0
+    );
+  }
+
+  async findOneForView(id: number) {
+    const user = await this.userRepository.findOne({
+      where: { id },
+      relations: ["permissions", "manager"],
+    });
+    if (!user) {
+      throw new NotFoundException("User not found");
+    }
+
+    const {
+      password: _password,
+      password_enc: _passwordEnc,
+      password_enc_version: _passwordEncVersion,
+      password_last_revealed_at: _passwordLastRevealedAt,
+      password_reveal_count: _passwordRevealCount,
+      resetToken: _resetToken,
+      resetTokenExpiry: _resetTokenExpiry,
+      manager,
+      ...safeUser
+    } = user;
+
+    const managerSummary = manager
+      ? {
+          id: manager.id,
+          first_name: manager.first_name,
+          last_name: manager.last_name,
+          email: manager.email,
+        }
+      : null;
+
+    let geographic_assignments: Awaited<
+      ReturnType<GeographicAssignmentService["resolve"]>
+    > = [];
+
+    if (this.hasGeographicAssignments(user)) {
+      geographic_assignments = await this.geographicAssignmentService.resolve({
+        countries: user.assigned_countries ?? [],
+        regions: user.assigned_regions ?? [],
+        districts: user.assigned_districts ?? [],
+        tehsils: user.assigned_tehsils ?? [],
+        cities: user.assigned_cities ?? [],
+        routes: user.assigned_routes ?? [],
+      });
+    }
+
+    return {
+      ...safeUser,
+      manager: managerSummary,
+      geographic_assignments,
+    };
   }
 
   async update(
@@ -336,11 +555,8 @@ export class UsersService {
         );
       }
 
-      // Hash the new password
-      const hashedNewPassword = await bcrypt.hash(newPassword, 10);
-
-      // Update the password
-      user.password = hashedNewPassword;
+      const passwordFields = await this.buildPasswordFields(newPassword);
+      Object.assign(user, passwordFields);
       await this.userRepository.save(user);
 
       return { message: "Password changed successfully" };
@@ -382,11 +598,8 @@ export class UsersService {
         );
       }
 
-      // Hash the new password
-      const hashedNewPassword = await bcrypt.hash(newPassword, 10);
-
-      // Update the password
-      targetUser.password = hashedNewPassword;
+      const passwordFields = await this.buildPasswordFields(newPassword);
+      Object.assign(targetUser, passwordFields);
       await this.userRepository.save(targetUser);
 
       return { message: "Password changed successfully" };
@@ -399,6 +612,46 @@ export class UsersService {
       }
       throw new ConflictException("Failed to change password");
     }
+  }
+
+  async revealUserPassword(userId: number): Promise<{ password: string }> {
+    const user = await this.userRepository.findOne({
+      where: { id: userId, is_archived: false },
+    });
+    if (!user) {
+      throw new NotFoundException("User not found");
+    }
+    if (!user.password_enc || !user.password_enc_version) {
+      throw new NotFoundException(
+        "No stored password available for this user. Change the password once to enable reveal.",
+      );
+    }
+
+    const password = decryptDonorPassword(
+      user.password_enc,
+      user.password_enc_version,
+    );
+
+    await this.userRepository.update(userId, {
+      password_last_revealed_at: new Date(),
+      password_reveal_count: (user.password_reveal_count || 0) + 1,
+    });
+
+    return { password };
+  }
+
+  private async buildPasswordFields(plainPassword: string): Promise<{
+    password: string;
+    password_enc: string;
+    password_enc_version: number;
+  }> {
+    const password = await bcrypt.hash(plainPassword, 10);
+    const enc = encryptDonorPassword(plainPassword);
+    return {
+      password,
+      password_enc: enc.payload,
+      password_enc_version: enc.version,
+    };
   }
 
   private validatePasswordStrength(password: string): {

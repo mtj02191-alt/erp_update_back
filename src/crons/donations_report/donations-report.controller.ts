@@ -12,7 +12,10 @@ import { Response } from "express";
 import { DonationsReportService } from "./donations-report.service";
 import { JwtGuard } from "../../auth/jwt.guard";
 import { PermissionsGuard } from "../../permissions/guards/permissions.guard";
-import { RequiredPermissions } from "../../permissions";
+import {
+  DONATION_VIEW_STAFF_GUARD,
+  RequiredPermissions,
+} from "../../permissions";
 
 @Controller("donations-report")
 @UseGuards(JwtGuard, PermissionsGuard)
@@ -26,11 +29,7 @@ export class DonationsReportController {
    * POST /donations-report/daily
    */
   @Post("daily")
-  @RequiredPermissions([
-    "fund_raising.donations.view",
-    "super_admin",
-    "fund_raising_manager",
-  ])
+  @RequiredPermissions([...DONATION_VIEW_STAFF_GUARD])
   async generateDailyReport(
     @Body() body: { recipientEmail?: string | string[] },
     @Res() res: Response,
@@ -60,11 +59,7 @@ export class DonationsReportController {
    * POST /donations-report/weekly
    */
   @Post("weekly")
-  @RequiredPermissions([
-    "fund_raising.donations.view",
-    "super_admin",
-    "fund_raising_manager",
-  ])
+  @RequiredPermissions([...DONATION_VIEW_STAFF_GUARD])
   async generateWeeklyReport(
     @Body() body: { recipientEmail?: string | string[] },
     @Res() res: Response,
@@ -94,11 +89,7 @@ export class DonationsReportController {
    * POST /donations-report/monthly
    */
   @Post("monthly")
-  @RequiredPermissions([
-    "fund_raising.donations.view",
-    "super_admin",
-    "fund_raising_manager",
-  ])
+  @RequiredPermissions([...DONATION_VIEW_STAFF_GUARD])
   async generateMonthlyReport(
     @Body() body: { recipientEmail?: string | string[] },
     @Res() res: Response,
@@ -128,11 +119,7 @@ export class DonationsReportController {
    * GET /donations-report/custom?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&type=daily|weekly|monthly
    */
   @Get("custom")
-  @RequiredPermissions([
-    "fund_raising.donations.view",
-    "super_admin",
-    "fund_raising_manager",
-  ])
+  @RequiredPermissions([...DONATION_VIEW_STAFF_GUARD])
   async generateCustomReport(
     @Query("startDate") startDate: string,
     @Query("endDate") endDate: string,
@@ -182,11 +169,7 @@ export class DonationsReportController {
    * POST /donations-report/custom
    */
   @Post("custom")
-  @RequiredPermissions([
-    "fund_raising.donations.view",
-    "super_admin",
-    "fund_raising_manager",
-  ])
+  @RequiredPermissions([...DONATION_VIEW_STAFF_GUARD])
   async generateAndSendCustomReport(
     @Body()
     body: {

@@ -3,7 +3,9 @@ import {
   Column,
   PrimaryGeneratedColumn,
   OneToOne,
+  ManyToOne,
   ManyToMany,
+  JoinColumn,
   UpdateDateColumn,
 } from "typeorm";
 import { PermissionsEntity } from "../permissions/entities/permissions.entity";
@@ -12,8 +14,6 @@ import { DonationBox } from "../dms/donation_box/entities/donation-box.entity";
 export enum UserRole {
   SUPER_ADMIN = "super_admin",
   ADMIN = "admin",
-  CEO = "ceo",
-  PA = "pa",
   USER = "user",
   MANAGER = "manager",
   ASSISTANT_MANAGER = "assistant_manager",
@@ -29,6 +29,18 @@ export enum UserRole {
   FIELD_OFFICER = "field_officer",
   VOLUNTEER = "volunteer",
   DEPT_HEAD = "dept_head",
+  ASST_CRD_OFFICER = "asst_crd_officer",
+  CRD_OFFICER = "crd_officer",
+  INTERNEE = "internee",
+  // Fund raising department roles
+  FUNDRAISER = "fundraiser",
+  DONOR_RELATIONS_OFFICER = "donor_relations_officer",
+  CSR = "csr",
+  RECONCILE_AGENT = "reconcile_agent",
+  BACK_OFFICE_CLERK = "back_office_clerk",
+  CALL_CENTER_AGENT = "call_center_agent",
+  CEO = "ceo",
+  PA = "pa",
 }
 
 export enum Department {
@@ -48,7 +60,7 @@ export enum Department {
   CEO = "ceo",
   INTERNAL_AUDIT = "internal_audit",
   CRD = "crd",
-  AAS_LAB = "aas_lab",
+  AAS_LAB = "aas_lab"
 }
 
 @Entity()
@@ -61,6 +73,19 @@ export class User {
 
   @Column()
   password: string;
+
+  // Encrypted copy for admin reveal (same vault as donor passwords).
+  @Column({ type: "text", nullable: true })
+  password_enc: string | null;
+
+  @Column({ type: "int", default: 0 })
+  password_enc_version: number;
+
+  @Column({ type: "timestamp", nullable: true })
+  password_last_revealed_at: Date | null;
+
+  @Column({ type: "int", default: 0 })
+  password_reveal_count: number;
 
   @Column({
     type: "enum",
@@ -95,6 +120,13 @@ export class User {
 
   @Column({ nullable: true })
   resetTokenExpiry: Date;
+
+  /** Calendar day (YYYY-MM-DD) for forgot-password rate limiting. */
+  @Column({ name: "password_reset_day", type: "date", nullable: true })
+  password_reset_day: string | null;
+
+  @Column({ name: "password_reset_count", type: "int", default: 0 })
+  password_reset_count: number;
 
   // New fields in snake_case
   @Column({ name: "first_name", nullable: true })
@@ -167,6 +199,25 @@ export class User {
     default: null,
   })
   assigned_cities: number[];
+
+  @Column({
+    name: "assigned_routes",
+    type: "jsonb",
+    nullable: true,
+    default: null,
+  })
+  assigned_routes: number[];
+
+  /** When true, fund_raising DMS geographic filters are not applied (permissions still apply). */
+  @Column({ name: "geographic_off", type: "boolean", default: false })
+  geographic_off: boolean;
+
+  @Column({ name: "manager_id", type: "int", nullable: true })
+  manager_id: number | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: "SET NULL" })
+  @JoinColumn({ name: "manager_id" })
+  manager: User;
 
   // One-to-One relationship with permissions
   @OneToOne(() => PermissionsEntity, (permissions) => permissions.user)

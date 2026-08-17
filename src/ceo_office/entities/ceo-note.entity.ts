@@ -50,6 +50,8 @@ export enum CeoNoteStatus {
   COMPLETED = "completed",
   CLOSED = "closed",
   CANCELLED = "cancelled",
+  ON_HOLD = "on_hold",
+  REQUEST_CLARIFICATION = "request_clarification",
 }
 
 @Entity("ceo_notes")

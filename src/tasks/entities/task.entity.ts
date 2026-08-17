@@ -181,12 +181,6 @@ export class Task {
   @Column({ type: "text", array: true, nullable: true })
   mov_items: string[];
 
-  @Column({ type: "varchar", nullable: true })
-  source: string; // e.g., "ceo_note", "project_command_sheet_action_item"
-
-  @Column({ type: "int", nullable: true })
-  source_id: number; // The ID of the source entity
-
   @OneToMany(() => TaskAttachment, (att) => att.task, { cascade: true })
   attachments: TaskAttachment[];
 
@@ -204,4 +198,10 @@ export class Task {
 
   @UpdateDateColumn({ type: "timestamp", default: () => "CURRENT_TIMESTAMP" })
   updated_at: Date;
+
+   @Column({ type: "varchar", nullable: true })
+  source: string; // e.g., "ceo_note"
+
+  @Column({ type: "int", nullable: true })
+  source_id: number; // The ID of the source entity
 }

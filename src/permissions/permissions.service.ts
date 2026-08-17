@@ -24,10 +24,10 @@ export class PermissionsService {
   ): Promise<boolean> {
     try {
       const userPermissions = await this.getUserPermissions(userId);
-      this.logger.debug(
-        `Checking permission for user ${userId}, path: ${permissionPath}, permissions:`,
-        userPermissions,
-      );
+      // this.logger.debug(
+      //   `Checking permission for user ${userId}, path: ${permissionPath}, permissions:`,
+      //   userPermissions,
+      // );
       return this.checkNestedPermission(userPermissions, permissionPath);
     } catch (error) {
       this.logger.error(
@@ -80,10 +80,10 @@ export class PermissionsService {
         .where("permissions.user_id = :userId", { userId })
         .getOne();
 
-      this.logger.debug(
-        `Fetched permissions for user ${userId}:`,
-        userPermission?.permissions,
-      );
+      // this.logger.debug(
+      //   `Fetched permissions for user ${userId}:`,
+      //   userPermission?.permissions,
+      // );
       return userPermission?.permissions || {};
     } catch (error) {
       this.logger.error(

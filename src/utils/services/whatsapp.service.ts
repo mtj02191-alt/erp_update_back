@@ -228,6 +228,50 @@ export class WhatsAppService implements OnModuleInit {
   }
 
   /**
+   * Send a plain-text WhatsApp session message (best-effort).
+   */
+  async sendTextMessage(data: {
+    phoneNumber: string;
+    message: string;
+  }): Promise<boolean> {
+    try {
+      if (!this.token) {
+        this.logger.error(
+          "WhatsApp API token not configured - cannot send message",
+        );
+        return false;
+      }
+
+      const formattedPhone = this.formatPhoneNumber(data.phoneNumber);
+      const payload = {
+        phone_number: formattedPhone,
+        type: "text",
+        parameters: {
+          text: data.message,
+        },
+      };
+
+      await axios.post(this.apiUrl, payload, {
+        headers: {
+          token: this.token,
+          "Content-Type": "application/json",
+        },
+      });
+
+      this.logger.log(`WhatsApp text message sent to ${formattedPhone}`);
+      return true;
+    } catch (error: any) {
+      this.logger.error(`WhatsApp text send failed: ${error?.message}`);
+      if (error?.response) {
+        this.logger.error(
+          `WhatsApp API error: ${JSON.stringify(error.response.data)}`,
+        );
+      }
+      return false;
+    }
+  }
+
+  /**
    * Format phone number to required format (country code without +)
    * @param phoneNumber Phone number in any format
    * @returns Formatted phone number (e.g., "923352321340")

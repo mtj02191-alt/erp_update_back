@@ -5,6 +5,7 @@ import { DistrictsModule } from "./districts/districts.module";
 import { TehsilsModule } from "./tehsils/tehsils.module";
 import { CitiesModule } from "./cities/cities.module";
 import { RoutesModule } from "./routes/routes.module";
+import { GeographicAssignmentModule } from "./geographic-assignment/geographic-assignment.module";
 import { PermissionsModule } from "src/permissions";
 import { JwtModule } from "@nestjs/jwt";
 
@@ -21,6 +22,7 @@ import { JwtModule } from "@nestjs/jwt";
     TehsilsModule,
     CitiesModule,
     RoutesModule,
+    GeographicAssignmentModule,
   ],
   exports: [
     CountriesModule,
@@ -29,6 +31,7 @@ import { JwtModule } from "@nestjs/jwt";
     TehsilsModule,
     CitiesModule,
     RoutesModule,
+    GeographicAssignmentModule,
   ],
 })
 export class GeographicModule {}

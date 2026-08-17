@@ -25,17 +25,18 @@ export class DmsController {
     return this.dmsService.findAll();
   }
 
-  @Get(":id")
+  // Avoid intercepting `/dms/todos` by scoping the "dm entity" routes.
+  @Get("dm/:id")
   findOne(@Param("id") id: string) {
     return this.dmsService.findOne(+id);
   }
 
-  @Patch(":id")
+  @Patch("dm/:id")
   update(@Param("id") id: string, @Body() updateDmDto: UpdateDmDto) {
     return this.dmsService.update(+id, updateDmDto);
   }
 
-  @Delete(":id")
+  @Delete("dm/:id")
   remove(@Param("id") id: string) {
     return this.dmsService.remove(+id);
   }

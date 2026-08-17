@@ -5,3 +5,4 @@ export class AllocateTrackerPartsDto {
   @IsInt()
   parts_requested?: number;
 }
+

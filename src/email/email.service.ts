@@ -64,17 +64,19 @@ export class EmailService implements OnModuleInit {
   /**
    * Send a dynamic email using a template string and data for placeholders.
    * Placeholders should be in the format {{variable_name}}.
+   * Returns Resend message id when available (needed for open/click webhooks).
    */
   async sendDynamicEmail(params: {
     to: string;
     subject: string;
     body: string;
     data: Record<string, any>;
-  }): Promise<boolean> {
+    tags?: Array<{ name: string; value: string }>;
+  }): Promise<{ success: boolean; messageId?: string | null; error?: string }> {
     try {
       if (!this.resend) {
         this.logger.error("Resend is not configured - cannot send email");
-        return false;
+        return { success: false, error: "Resend is not configured" };
       }
 
       const fromEmail = this.configService.get<string>(
@@ -101,6 +103,7 @@ export class EmailService implements OnModuleInit {
         to: [params.to],
         subject: renderedSubject,
         html: renderedBody,
+        ...(params.tags?.length ? { tags: params.tags } : {}),
         headers: {
           "X-Mailer": "MTJ Foundation Dynamic Email System",
           "Reply-To": fromEmail,
@@ -111,15 +114,56 @@ export class EmailService implements OnModuleInit {
         this.logger.warn(
           `Resend error sending dynamic email: ${JSON.stringify(result.error)}`,
         );
-        return false;
+        return {
+          success: false,
+          error: JSON.stringify(result.error),
+        };
       }
 
-      this.logger.log(`Dynamic email sent successfully to ${params.to}`);
-      return true;
+      // Resend webhooks match on `data.email_id` (UUID) for opened/clicked events.
+      // `data.id` is a different identifier (often `msg_...`), so store `email_id` when present.
+      const responseData: any = (result as any)?.data;
+      const emailId = responseData?.email_id || responseData?.id || null;
+      this.logger.log(
+        `Dynamic email sent successfully to ${params.to}${
+          emailId ? ` (emailId: ${emailId})` : ""
+        }`,
+      );
+      return { success: true, messageId: emailId };
     } catch (error: any) {
       this.logger.error(`Failed to send dynamic email: ${error.message}`);
-      return false;
+      return { success: false, error: error?.message || "Send failed" };
     }
+  }
+
+  /**
+   * Verify Resend (Svix) webhook signature. Requires raw body string + svix headers.
+   */
+  verifyResendWebhook(
+    rawBody: string | Buffer,
+    headers: {
+      "svix-id"?: string;
+      "svix-timestamp"?: string;
+      "svix-signature"?: string;
+    },
+  ): Record<string, any> {
+    const secret = this.configService.get<string>("RESEND_WEBHOOK_SECRET", "");
+    if (!secret) {
+      throw new Error("RESEND_WEBHOOK_SECRET is not configured");
+    }
+
+    // Lazy-require so app boots even if svix is missing in odd environments
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { Webhook } = require("svix") as typeof import("svix");
+    const wh = new Webhook(secret);
+    const payload =
+      typeof rawBody === "string" ? rawBody : rawBody.toString("utf8");
+
+    return wh.verify(payload, {
+      "svix-id": headers["svix-id"] || "",
+      "svix-timestamp": headers["svix-timestamp"] || "",
+      "svix-signature": headers["svix-signature"] || "",
+    }) as Record<string, any>;
   }
 
   private donationLabel(type?: string) {
@@ -1379,6 +1423,163 @@ export class EmailService implements OnModuleInit {
     }
   }
 
+  async sendTaskCommentMentionEmail(
+    user: {
+      email?: string;
+      first_name?: string;
+      last_name?: string;
+    },
+    task: { id?: number; title?: string },
+    commentContent: string,
+    mentionedByName: string,
+  ): Promise<boolean> {
+    try {
+      if (!user?.email) return false;
+
+      const fromEmail = this.configService.get<string>(
+        "RESEND_FROM_EMAIL",
+        "info@mtjfoundation.com",
+      );
+      const senderName = this.configService.get<string>(
+        "SENDER_NAME",
+        "MTJ Foundation",
+      );
+
+      if (!this.resend) {
+        this.logger.error("Resend is not configured - cannot send email");
+        return false;
+      }
+
+      const baseFrontendUrl = (
+        this.configService.get<string>("BASE_Frontend_URL") || ""
+      ).replace(/\/$/, "");
+      const taskTitle = task?.title || "Task";
+      const taskId = task?.id;
+      const taskLink =
+        baseFrontendUrl && taskId
+          ? `${baseFrontendUrl}/tasks/view/${taskId}`
+          : null;
+      const recipientName =
+        `${user.first_name || ""} ${user.last_name || ""}`.trim() ||
+        user.email;
+      const safeComment = String(commentContent || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\n/g, "<br/>");
+
+      const result = await this.resend.emails.send({
+        from: `${senderName} <${fromEmail}>`,
+        to: [user.email],
+        subject: `You were mentioned on task: ${taskTitle}`,
+        html: `
+          <h1>You were mentioned in a task comment</h1>
+          <p>Hi ${recipientName},</p>
+          <p><strong>${mentionedByName}</strong> mentioned you in a comment on task: <strong>${taskTitle}</strong></p>
+          <blockquote style="border-left:4px solid #ccc;margin:16px 0;padding:8px 16px;color:#333;">
+            ${safeComment}
+          </blockquote>
+          ${
+            taskLink
+              ? `<p><a href="${taskLink}">View task in ERP</a></p>`
+              : "<p>Please log in to the ERP to view this task.</p>"
+          }
+        `,
+      });
+
+      const success = result.error === null && !!result.data?.id;
+      if (success) {
+        this.logger.log(
+          `Task comment mention email sent to ${user.email} for task ${taskId}`,
+        );
+      } else if (result.error) {
+        this.logger.warn(
+          `Resend error (comment mention): ${JSON.stringify(result.error)}`,
+        );
+      }
+      return success;
+    } catch (e: any) {
+      this.logger.error(
+        `Failed to send task comment mention email: ${e?.message}`,
+      );
+      return false;
+    }
+  }
+
+  async sendTaskDueReminderEmail(
+    user: {
+      email?: string;
+      first_name?: string;
+      last_name?: string;
+    },
+    task: { id?: number; title?: string },
+    offsetDays: number,
+    dueDateLabel: string,
+  ): Promise<boolean> {
+    try {
+      if (!user?.email) return false;
+
+      const fromEmail = this.configService.get<string>(
+        "RESEND_FROM_EMAIL",
+        "info@mtjfoundation.com",
+      );
+      const senderName = this.configService.get<string>(
+        "SENDER_NAME",
+        "MTJ Foundation",
+      );
+
+      if (!this.resend) {
+        this.logger.error("Resend is not configured - cannot send email");
+        return false;
+      }
+
+      const baseFrontendUrl = (
+        this.configService.get<string>("BASE_Frontend_URL") || ""
+      ).replace(/\/$/, "");
+      const taskTitle = task?.title || "Task";
+      const taskId = task?.id;
+      const taskLink =
+        baseFrontendUrl && taskId
+          ? `${baseFrontendUrl}/tasks/view/${taskId}`
+          : null;
+      const recipientName =
+        `${user.first_name || ""} ${user.last_name || ""}`.trim() ||
+        user.email;
+
+      let duePhrase = `due in ${offsetDays} days`;
+      if (offsetDays === 0) duePhrase = "due today";
+      else if (offsetDays === 1) duePhrase = "due tomorrow";
+
+      const result = await this.resend.emails.send({
+        from: `${senderName} <${fromEmail}>`,
+        to: [user.email],
+        subject: `Task reminder: "${taskTitle}" is ${duePhrase}`,
+        html: `
+          <h1>Task due date reminder</h1>
+          <p>Hi ${recipientName},</p>
+          <p>This is a reminder that your assigned task <strong>${taskTitle}</strong> is <strong>${duePhrase}</strong>.</p>
+          <p><strong>Due date:</strong> ${dueDateLabel}</p>
+          ${
+            taskLink
+              ? `<p><a href="${taskLink}">View task in ERP</a></p>`
+              : "<p>Please log in to the ERP to view this task.</p>"
+          }
+        `,
+      });
+
+      const success = result.error === null && !!result.data?.id;
+      if (success) {
+        this.logger.log(
+          `Task due reminder email sent to ${user.email} for task ${taskId}`,
+        );
+      }
+      return success;
+    } catch (e: any) {
+      this.logger.error(`Failed to send task due reminder email: ${e?.message}`);
+      return false;
+    }
+  }
+
   async sendTaskOverdueNotification(
     toEmail: string,
     task: any,
@@ -1419,6 +1620,66 @@ export class EmailService implements OnModuleInit {
       return success;
     } catch (error: any) {
       this.logger.error(`Task overdue email send failed: ${error?.message}`);
+      return false;
+    }
+  }
+
+  async sendTemporaryPasswordEmail(params: {
+    to: string;
+    userName: string;
+    temporaryPassword: string;
+  }): Promise<boolean> {
+    try {
+      if (!this.resend) {
+        this.logger.error("Resend is not configured - cannot send email");
+        return false;
+      }
+
+      const fromEmail = this.configService.get<string>(
+        "RESEND_FROM_EMAIL",
+        "info@mtjfoundation.com",
+      );
+      const senderName = this.configService.get<string>(
+        "SENDER_NAME",
+        "MTJ Foundation",
+      );
+
+      const result = await this.resend.emails.send({
+        from: `${senderName} <${fromEmail}>`,
+        to: [params.to],
+        subject: "Your temporary password - MTJF ERP",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; color: #0f2744;">
+            <h2 style="margin-bottom: 8px;">Password reset</h2>
+            <p>Hello ${params.userName},</p>
+            <p>A new temporary password was generated for your MTJF ERP account.</p>
+            <p style="font-size: 18px; font-weight: bold; letter-spacing: 1px; background: #f1f5f9; padding: 12px 16px; border-radius: 8px;">
+              ${params.temporaryPassword}
+            </p>
+            <p>Please sign in with this password and change it from your profile as soon as possible.</p>
+            <p style="color: #64748b; font-size: 13px;">If you did not request this, contact your administrator.</p>
+          </div>
+        `,
+        text: `Hello ${params.userName},\n\nYour temporary password is: ${params.temporaryPassword}\n\nPlease sign in and change it as soon as possible.`,
+        headers: {
+          "X-Mailer": "MTJ Foundation ERP",
+          "Reply-To": fromEmail,
+        },
+      });
+
+      if (result.error !== null) {
+        this.logger.warn(
+          `Resend error sending temp password: ${JSON.stringify(result.error)}`,
+        );
+        return false;
+      }
+
+      this.logger.log(`Temporary password email sent to ${params.to}`);
+      return true;
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to send temporary password email: ${error?.message}`,
+      );
       return false;
     }
   }

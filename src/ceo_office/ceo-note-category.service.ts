@@ -17,37 +17,47 @@ export class CeoNoteCategoryService {
   }
 
   private mapNoteStatusToCategoryStatus(category: string, status: string) {
-    // Normalize note status (CeoNoteStatus) into category-specific status values
-    // Keep mappings conservative to avoid invalid enum values in category tables.
-    const s = (status || '').toString();
+    // Normalize note status (CeoNoteStatus, or frontend category-specific status)
+    // into the canonical snake_case values used by each category table.
+    // We compare case-insensitively and allow either enum (on_hold) or label ("On Hold") input.
+    const s = (status || '').toString().trim().toLowerCase().replace(/\s+/g, '_');
     switch (category) {
       case 'emails_and_approvals':
-        if (s === 'approved') return 'approved';
-        if (s === 'rejected') return 'rejected';
-        // default
+        if (s === 'approved' || s === 'approve') return 'approved';
+        if (s === 'rejected' || s === 'reject') return 'rejected';
+        if (s === 'request_clarification' || s === 'clarification') return 'request_clarification';
         return 'pending';
       case 'waiting_response':
-        if (s === 'waiting_response') return 'waiting_response';
+        if (s === 'waiting_response' || s === 'waiting') return 'waiting_response';
+        if (s === 'reminder_sent' || s === 'reminder') return 'reminder_sent';
+        if (s === 'received') return 'received';
         if (s === 'closed') return 'closed';
-        // default
         return 'waiting_response';
       case 'project_command_sheets':
-        if (s === 'in_progress') return 'In Progress';
-        if (s === 'completed') return 'Completed';
-        if (s === 'closed') return 'Closed';
-        return 'Pending';
+        if (s === 'in_progress' || s === 'inprogress') return 'in_progress';
+        if (s === 'on_hold' || s === 'onhold') return 'on_hold';
+        if (s === 'completed' || s === 'complete') return 'completed';
+        if (s === 'closed') return 'completed';
+        return 'pending';
       case 'visitors':
+        if (s === 'waiting') return 'waiting';
+        if (s === 'completed' || s === 'complete') return 'completed';
+        if (s === 'cancelled' || s === 'canceled' || s === 'cancel') return 'cancelled';
+        if (s === 'closed') return 'completed';
+        return 'pending';
       case 'calls':
-        if (s === 'completed') return 'Completed';
-        if (s === 'cancelled') return 'Cancelled';
-        if (s === 'closed') return 'Closed';
-        return 'Pending';
+        if (s === 'follow_up_required' || s === 'followup_required' || s === 'follow_up') return 'follow_up_required';
+        if (s === 'completed' || s === 'complete') return 'completed';
+        if (s === 'cancelled' || s === 'canceled' || s === 'cancel') return 'cancelled';
+        if (s === 'closed') return 'completed';
+        return 'pending';
       case 'whatsapp':
-        if (s === 'completed') return 'Completed';
-        if (s === 'waiting_response') return 'Pending Reply';
-        if (s === 'cancelled') return 'Cancelled';
-        if (s === 'closed') return 'Closed';
-        return 'Pending Reply';
+        if (s === 'pending_reply' || s === 'pendingreply') return 'pending_reply';
+        if (s === 'replied' || s === 'reply') return 'replied';
+        if (s === 'waiting_response' || s === 'waiting') return 'waiting_response';
+        if (s === 'completed' || s === 'closed') return 'closed';
+        if (s === 'cancelled' || s === 'canceled') return 'closed';
+        return 'pending_reply';
       default:
         return status;
     }
@@ -142,7 +152,7 @@ export class CeoNoteCategoryService {
         results: dto.results || null,
         start_date: dto.start_date ? new Date(dto.start_date) : null,
         end_date: dto.end_date ? new Date(dto.end_date) : null,
-        status: this.hasStatusField(dto) ? this.mapNoteStatusToCategoryStatus(category, dto.status) : (dto.pcs_status ?? "Pending"),
+        status: this.hasStatusField(dto) ? this.mapNoteStatusToCategoryStatus(category, dto.status) : (dto.pcs_status ?? "pending"),
         created_by_id: note.created_by_id,
       });
       await manager.getRepository(ProjectCommandSheet).save(pcs);
@@ -161,7 +171,7 @@ export class CeoNoteCategoryService {
         remarks: dto.remarks || null,
         visit_datetime: dto.visit_datetime ? new Date(dto.visit_datetime) : (note.date || new Date()),
         related_note_id: note.id,
-        status: this.hasStatusField(dto) ? this.mapNoteStatusToCategoryStatus(category, dto.status) : "Pending",
+        status: this.hasStatusField(dto) ? this.mapNoteStatusToCategoryStatus(category, dto.status) : "pending",
         created_by_id: note.created_by_id,
       });
       await manager.getRepository(Visitor).save(visitor);
@@ -180,7 +190,7 @@ export class CeoNoteCategoryService {
         remarks: dto.remarks || null,
         visit_datetime: dto.visit_datetime ? new Date(dto.visit_datetime) : (note.date || new Date()),
         related_note_id: note.id,
-        status: this.hasStatusField(dto) ? this.mapNoteStatusToCategoryStatus(category, dto.status) : "Pending",
+        status: this.hasStatusField(dto) ? this.mapNoteStatusToCategoryStatus(category, dto.status) : "pending",
         created_by_id: note.created_by_id,
       });
       await manager.getRepository(Call).save(call);
@@ -197,7 +207,7 @@ export class CeoNoteCategoryService {
         remarks: dto.remarks || null,
         visit_datetime: dto.visit_datetime ? new Date(dto.visit_datetime) : (note.date || new Date()),
         related_note_id: note.id,
-        status: this.hasStatusField(dto) ? this.mapNoteStatusToCategoryStatus(category, dto.status) : "Pending Reply",
+        status: this.hasStatusField(dto) ? this.mapNoteStatusToCategoryStatus(category, dto.status) : "pending_reply",
         created_by_id: note.created_by_id,
       });
       await manager.getRepository(WhatsAppMessage).save(whatsapp);

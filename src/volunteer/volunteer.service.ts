@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { CreateVolunteerDto } from "./dto/create-volunteer.dto";
@@ -20,6 +24,69 @@ export class VolunteerService {
   async create(createVolunteerDto: CreateVolunteerDto): Promise<Volunteer> {
     const volunteer = this.volunteerRepository.create(createVolunteerDto);
     return await this.volunteerRepository.save(volunteer);
+  }
+
+  async findActiveByEmail(email: string): Promise<Volunteer | null> {
+    const normalized = String(email || "")
+      .trim()
+      .toLowerCase();
+    if (!normalized) return null;
+    return this.volunteerRepository.findOne({
+      where: { email: normalized, is_archived: false },
+    });
+  }
+
+  /**
+   * CSV / data-import row — same persistence rules as create().
+   */
+  async importVolunteerRow(
+    row: Record<string, unknown>,
+    _user?: any,
+  ): Promise<Volunteer> {
+    const email = row.email
+      ? String(row.email).trim().toLowerCase()
+      : undefined;
+
+    if (email) {
+      const existing = await this.findActiveByEmail(email);
+      if (existing) {
+        throw new ConflictException(
+          `Volunteer with email ${email} already exists`,
+        );
+      }
+    }
+
+    const createDto = {
+      name: row.name,
+      phone: row.phone,
+      email,
+      cnic: row.cnic,
+      date_of_birth: row.date_of_birth,
+      gender: row.gender,
+      city: row.city,
+      area: row.area,
+      availability: row.availability,
+      availability_days: row.availability_days,
+      hours_per_week: row.hours_per_week,
+      willing_to_travel: row.willing_to_travel,
+      skills: row.skills,
+      interest_areas: row.interest_areas,
+      category: row.category,
+      motivation: row.motivation,
+      emergency_contact_name: row.emergency_contact_name,
+      emergency_contact_phone: row.emergency_contact_phone,
+      emergency_contact_relation: row.emergency_contact_relation,
+      status: row.status,
+      assigned_department: row.assigned_department,
+      interview_required: row.interview_required,
+      verification_status: row.verification_status,
+      source: row.source || "import",
+      comments: row.comments,
+      agreed_to_policy: row.agreed_to_policy ?? true,
+      declaration_accurate: row.declaration_accurate ?? true,
+    } as CreateVolunteerDto;
+
+    return this.create(createDto);
   }
 
   // ─── DMS: Paginated list with search & filters ───────────────

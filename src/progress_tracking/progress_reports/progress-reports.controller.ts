@@ -9,17 +9,12 @@ import {
 import { Response } from "express";
 import { JwtGuard } from "src/auth/jwt.guard";
 import { PermissionsGuard } from "src/permissions/guards/permissions.guard";
-import { RequiredPermissions } from "src/permissions";
+import { DONATION_VIEW_GUARD, RequiredPermissions } from "src/permissions";
 import { ProgressReportsService } from "./progress-reports.service";
 
 @Controller("progress/reports")
 @UseGuards(JwtGuard, PermissionsGuard)
-@RequiredPermissions([
-  "fund_raising.donations.view",
-  "super_admin",
-  "fund_raising_manager",
-  "fund_raising_user",
-])
+@RequiredPermissions([...DONATION_VIEW_GUARD])
 export class ProgressReportsController {
   constructor(private readonly service: ProgressReportsService) {}
 
@@ -57,3 +52,4 @@ export class ProgressReportsController {
     }
   }
 }
+

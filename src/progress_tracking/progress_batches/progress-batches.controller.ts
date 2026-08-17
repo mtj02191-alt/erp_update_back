@@ -12,7 +12,11 @@ import {
 import { Response } from "express";
 import { JwtGuard } from "src/auth/jwt.guard";
 import { PermissionsGuard } from "src/permissions/guards/permissions.guard";
-import { RequiredPermissions } from "src/permissions";
+import {
+  DONATION_UPDATE_GUARD,
+  DONATION_VIEW_GUARD,
+  RequiredPermissions,
+} from "src/permissions";
 import { CurrentUser } from "src/auth/current-user.decorator";
 import { ProgressBatchesService } from "./progress-batches.service";
 import { UpdateWorkflowBatchDto } from "./dto/update-workflow-batch.dto";
@@ -31,12 +35,7 @@ export class ProgressBatchesController {
    * - all: ignore tracker status
    */
   @Get("options")
-  @RequiredPermissions([
-    "fund_raising.donations.view",
-    "super_admin",
-    "fund_raising_manager",
-    "fund_raising_user",
-  ])
+  @RequiredPermissions([...DONATION_VIEW_GUARD])
   async options(
     @Query("status") status?: string,
     @Query("search") search?: string,
@@ -55,11 +54,7 @@ export class ProgressBatchesController {
   }
 
   @Patch(":id")
-  @RequiredPermissions([
-    "fund_raising.donations.update",
-    "super_admin",
-    "fund_raising_manager",
-  ])
+  @RequiredPermissions([...DONATION_UPDATE_GUARD])
   async updateBatch(
     @Param("id") id: string,
     @Body() dto: UpdateWorkflowBatchDto,

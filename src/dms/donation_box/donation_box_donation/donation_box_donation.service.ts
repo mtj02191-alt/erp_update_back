@@ -3,23 +3,34 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { Repository, ILike, SelectQueryBuilder } from "typeorm";
 import { DonationBoxDonation } from "./entities/donation_box_donation.entity";
 import { CreateDonationBoxDonationDto } from "./dto/create-donation_box_donation.dto";
 import { UpdateDonationBoxDonationDto } from "./dto/update-donation_box_donation.dto";
 import { DonationBox } from "../entities/donation-box.entity";
-import { City } from "../../geographic/cities/entities/city.entity";
 import {
   applyCommonFilters,
   FilterPayload,
   applyHybridFilters,
   HybridFilter,
 } from "../../../utils/filters/common-filter.util";
-import { User, Department } from "../../../users/user.entity";
+import { User } from "../../../users/user.entity";
 import { DashboardAggregateService } from "../../../dashboard/dashboard-aggregate.service";
 import { CollectionStatus } from "./entities/donation_box_donation.entity";
+import { DonationBoxDonationAuditService } from "./audit/donation-box-donation-audit.service";
+import { DonationBoxDonationAuditAction } from "./audit/donation-box-donation-audit-action.enum";
+import { DonationBoxDonationAuditSource } from "./audit/donation-box-donation-audit-source.enum";
+import {
+  buildDonationBoxDonationFieldChanges,
+} from "./audit/donation-box-donation-audit.util";
+import { DataScopeService } from "../../../permissions/data-scope/data-scope.service";
+import { ResolvedDataScope } from "../../../permissions/data-scope/data-scope.types";
+import { GeographicScopeService } from "../../../permissions/geographic-scope/geographic-scope.service";
+import { ResolvedGeographicScope } from "../../../permissions/geographic-scope/geographic-scope.types";
+import { DonationBoxGeoRecord } from "../../../permissions/geographic-scope/geographic-scope.types";
 
 interface PaginationOptions {
   page: number;
@@ -30,6 +41,9 @@ interface PaginationOptions {
   donation_box_id?: number;
   status?: string;
   payment_method?: string;
+  min_amount?: string | number;
+  max_amount?: string | number;
+  date?: string;
   start_date?: string;
   end_date?: string;
 }
@@ -41,98 +55,140 @@ export class DonationBoxDonationService {
     private readonly donationBoxDonationRepository: Repository<DonationBoxDonation>,
     @InjectRepository(DonationBox)
     private readonly donationBoxRepository: Repository<DonationBox>,
-    @InjectRepository(City)
-    private readonly cityRepository: Repository<City>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     private readonly dashboardAggregateService: DashboardAggregateService,
+    private readonly donationBoxDonationAuditService: DonationBoxDonationAuditService,
+    private readonly dataScopeService: DataScopeService,
+    private readonly geographicScopeService: GeographicScopeService,
   ) {}
 
-  /**
-   * Resolve a user's geographic assignments (IDs) to a unique list of city IDs.
-   * Returns null if the user has no geographic assignments (meaning no geo filter needed).
-   */
-  async resolveUserGeographyCityIds(userId: number): Promise<number[] | null> {
-    try {
-      if (userId === -1) return null;
+  async resolveCollectionScope(currentUser?: {
+    id?: number;
+    role?: string;
+    department?: string;
+  }): Promise<ResolvedDataScope> {
+    return this.dataScopeService.resolveScope(
+      currentUser?.id,
+      currentUser?.role,
+      currentUser?.department,
+      "fund_raising",
+      "donation_box_donations",
+    );
+  }
 
-      const user = await this.userRepository.findOne({ where: { id: userId } });
-      if (!user) return null;
+  assertCollectionRecordAccess(
+    scope: ResolvedDataScope,
+    record: DonationBoxDonation,
+  ): void {
+    this.dataScopeService.assertRecordAccess(scope, record);
+  }
 
-      if (user.department !== Department.FUND_RAISING) return null;
-
-      const assignedCountries = user.assigned_countries || [];
-      const assignedRegions = user.assigned_regions || [];
-      const assignedDistricts = user.assigned_districts || [];
-      const assignedTehsils = user.assigned_tehsils || [];
-      const assignedCities = user.assigned_cities || [];
-
-      if (
-        !assignedCountries.length &&
-        !assignedRegions.length &&
-        !assignedDistricts.length &&
-        !assignedTehsils.length &&
-        !assignedCities.length
-      ) {
-        return null;
-      }
-
-      const allCityIds: Set<number> = new Set();
-
-      assignedCities.forEach((id) => allCityIds.add(id));
-
-      if (assignedTehsils.length) {
-        const cities = await this.cityRepository
-          .createQueryBuilder("city")
-          .select("city.id")
-          .where("city.tehsil_id IN (:...ids)", { ids: assignedTehsils })
-          .getMany();
-        cities.forEach((c) => allCityIds.add(c.id));
-      }
-
-      if (assignedDistricts.length) {
-        const cities = await this.cityRepository
-          .createQueryBuilder("city")
-          .select("city.id")
-          .where("city.district_id IN (:...ids)", { ids: assignedDistricts })
-          .getMany();
-        cities.forEach((c) => allCityIds.add(c.id));
-      }
-
-      if (assignedRegions.length) {
-        const cities = await this.cityRepository
-          .createQueryBuilder("city")
-          .select("city.id")
-          .where("city.region_id IN (:...ids)", { ids: assignedRegions })
-          .getMany();
-        cities.forEach((c) => allCityIds.add(c.id));
-      }
-
-      if (assignedCountries.length) {
-        const cities = await this.cityRepository
-          .createQueryBuilder("city")
-          .select("city.id")
-          .where("city.country_id IN (:...ids)", { ids: assignedCountries })
-          .getMany();
-        cities.forEach((c) => allCityIds.add(c.id));
-      }
-
-      return allCityIds.size > 0 ? Array.from(allCityIds) : null;
-    } catch (error) {
-      console.error("Error resolving user geography city IDs:", error);
-      return null;
-    }
+  private toDonationBoxGeoRecord(box: DonationBox): DonationBoxGeoRecord {
+    return {
+      city_id: box.city_id,
+      route_id: box.route_id,
+      landmark_marketplace: box.landmark_marketplace,
+      geo_search: box.geo_search,
+      created_by: box.created_by,
+    };
   }
 
   /**
-   * Get current user from request context
-   * This should be implemented based on your authentication system
+   * When geographic territory filter is active, geo match on parent box governs access.
+   * Otherwise fall back to data scope (created_by).
    */
-  private getCurrentUserId(): number | null {
-    // TODO: Implement based on your authentication system
-    // This could be from JWT token, session, or request context
-    // For now, returning null - you'll need to implement this
-    return null;
+  assertCollectionViewAccess(
+    dataScope: ResolvedDataScope,
+    record: DonationBoxDonation,
+    geoScope?: ResolvedGeographicScope | null,
+  ): void {
+    if (
+      geoScope &&
+      this.geographicScopeService.isGeographicFilterActive(geoScope)
+    ) {
+      const box = record.donation_box;
+      if (
+        !box ||
+        !this.geographicScopeService.recordMatches(geoScope, "donation_box_donations", {
+          donation_box: this.toDonationBoxGeoRecord(box),
+          created_by: record.created_by,
+        })
+      ) {
+        throw new ForbiddenException(
+          "You do not have geographic access to this record",
+        );
+      }
+      return;
+    }
+
+    this.assertCollectionRecordAccess(dataScope, record);
+  }
+
+  private applyCollectionListDataScope(
+    query: SelectQueryBuilder<DonationBoxDonation>,
+    dataScope: ResolvedDataScope | null,
+    geoScope?: ResolvedGeographicScope | null,
+  ): void {
+    if (!dataScope) return;
+    if (
+      geoScope &&
+      this.geographicScopeService.isGeographicFilterActive(geoScope)
+    ) {
+      return;
+    }
+    this.dataScopeService.applyToQuery(
+      query,
+      "donation_box_donation",
+      dataScope,
+    );
+  }
+
+  /** Staff user id for created_by / updated_by. */
+  private donationBoxDonationAuditUserId(
+    userId: number | null | undefined,
+  ): number | null {
+    if (userId == null || Number(userId) === -1) return null;
+    return Number(userId);
+  }
+
+  private buildDonationBoxDonationPatch(
+    dto: UpdateDonationBoxDonationDto,
+  ): Record<string, unknown> {
+    const d = dto as Record<string, unknown>;
+    const allowed = [
+      "donation_box_id",
+      "collection_amount",
+      "collection_date",
+      "collected_by_id",
+      "collector_name",
+      "status",
+      "verified_by_id",
+      "verified_at",
+      "deposit_date",
+      "bank_deposit_slip_no",
+      "payment_method",
+      "cheque_number",
+      "bank_name",
+      "bank_account_no",
+      "notes",
+      "discrepancy_notes",
+      "photo_urls",
+      "receipt_number",
+      "is_archived",
+    ] as const;
+    const patch: Record<string, unknown> = {};
+    for (const key of allowed) {
+      if (d[key] === undefined) continue;
+      patch[key] = d[key];
+    }
+    return patch;
+  }
+
+  async getDonationBoxDonationAuditHistory(donationBoxDonationId: number) {
+    return this.donationBoxDonationAuditService.findByDonationBoxDonationId(
+      donationBoxDonationId,
+    );
   }
 
   /**
@@ -159,16 +215,17 @@ export class DonationBoxDonationService {
         throw new BadRequestException("Collection amount cannot be negative");
       }
 
-      // Auto-populate collected_by_id if not provided
-      const userId = currentUserId || this.getCurrentUserId();
-      if (!createDonationBoxDonationDto.collected_by_id && userId) {
-        createDonationBoxDonationDto.collected_by_id = userId;
+      const auditUserId = this.donationBoxDonationAuditUserId(currentUserId);
+      if (!createDonationBoxDonationDto.collected_by_id && auditUserId) {
+        createDonationBoxDonationDto.collected_by_id = auditUserId;
       }
 
-      // Create the collection record
-      const collection = this.donationBoxDonationRepository.create(
-        createDonationBoxDonationDto,
-      );
+      const collection = this.donationBoxDonationRepository.create({
+        ...createDonationBoxDonationDto,
+        ...(auditUserId != null
+          ? { created_by: { id: auditUserId } as any }
+          : {}),
+      });
 
       const savedCollection =
         await this.donationBoxDonationRepository.save(collection);
@@ -189,7 +246,13 @@ export class DonationBoxDonationService {
       // Return with relations
       return await this.donationBoxDonationRepository.findOne({
         where: { id: savedCollection.id },
-        relations: ["donation_box", "collected_by", "verified_by"],
+        relations: [
+          "donation_box",
+          "collected_by",
+          "verified_by",
+          "created_by",
+          "updated_by",
+        ],
       });
     } catch (error) {
       console.log("error", error);
@@ -204,9 +267,133 @@ export class DonationBoxDonationService {
   }
 
   /**
+   * Resolve parent donation box for CSV import.
+   */
+  async resolveDonationBoxIdForImport(params: {
+    donation_box_id?: number;
+    key_no?: string;
+    shop_name?: string;
+  }): Promise<number> {
+    if (params.donation_box_id) {
+      const box = await this.donationBoxRepository.findOne({
+        where: { id: params.donation_box_id, is_archived: false },
+      });
+      if (!box) {
+        throw new NotFoundException(
+          `Donation box with ID ${params.donation_box_id} not found`,
+        );
+      }
+      return box.id;
+    }
+
+    const keyNo = params.key_no?.trim();
+    if (keyNo) {
+      const box = await this.donationBoxRepository.findOne({
+        where: { key_no: keyNo, is_archived: false },
+      });
+      if (!box) {
+        throw new NotFoundException(
+          `Donation box with key "${keyNo}" not found`,
+        );
+      }
+      return box.id;
+    }
+
+    const shopName = params.shop_name?.trim();
+    if (shopName) {
+      const boxes = await this.donationBoxRepository.find({
+        where: { shop_name: ILike(shopName), is_archived: false },
+      });
+      if (boxes.length === 0) {
+        throw new NotFoundException(
+          `Donation box with shop "${shopName}" not found`,
+        );
+      }
+      if (boxes.length > 1) {
+        throw new NotFoundException(
+          `Multiple boxes match shop "${shopName}" — use donation_box_id or key_no`,
+        );
+      }
+      return boxes[0].id;
+    }
+
+    throw new BadRequestException(
+      "donation_box_id, key_no, or shop_name is required",
+    );
+  }
+
+  /**
+   * CSV / data-import row — same persistence rules as create().
+   */
+  async importDonationBoxDonationRow(
+    row: Record<string, unknown>,
+    user: any,
+  ): Promise<DonationBoxDonation> {
+    const donation_box_id = await this.resolveDonationBoxIdForImport({
+      donation_box_id: row.donation_box_id as number | undefined,
+      key_no: row.key_no as string | undefined,
+      shop_name: row.shop_name as string | undefined,
+    });
+
+    const amount = Number(row.collection_amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException(
+        "collection_amount must be greater than 0",
+      );
+    }
+
+    const createDto = {
+      donation_box_id,
+      collection_amount: amount,
+      collection_date: row.collection_date,
+      collector_name: row.collector_name as string | undefined,
+      collected_by_id: row.collected_by_id as number | undefined,
+      notes: row.notes as string | undefined,
+      payment_method: row.payment_method,
+      status: row.status,
+      receipt_number: row.receipt_number as string | undefined,
+    } as CreateDonationBoxDonationDto;
+
+    return this.create(createDto, user?.id);
+  }
+
+  private applyCollectionDateFilter(
+    query: SelectQueryBuilder<DonationBoxDonation>,
+    filters: {
+      date?: string;
+      start_date?: string;
+      end_date?: string;
+    },
+  ): void {
+    const dateField = "donation_box_donation.collection_date";
+    if (filters.start_date && filters.end_date) {
+      query.andWhere(`${dateField} BETWEEN :cbdStartDate AND :cbdEndDate`, {
+        cbdStartDate: filters.start_date,
+        cbdEndDate: filters.end_date,
+      });
+    } else if (filters.start_date) {
+      query.andWhere(`${dateField} >= :cbdStartDate`, {
+        cbdStartDate: filters.start_date,
+      });
+    } else if (filters.end_date) {
+      query.andWhere(`${dateField} <= :cbdEndDate`, {
+        cbdEndDate: filters.end_date,
+      });
+    } else if (filters.date) {
+      query.andWhere(`${dateField} = :cbdExactDate`, {
+        cbdExactDate: filters.date,
+      });
+    }
+  }
+
+  /**
    * Find all collections with pagination and filtering
    */
-  async findAll(options: PaginationOptions, assignedCityIds?: number[] | null) {
+  async findAll(
+    options: PaginationOptions,
+    geoScope?: ResolvedGeographicScope | null,
+    currentUser?: { id?: number; role?: string; department?: string },
+  ) {
     try {
       const {
         page = 1,
@@ -217,6 +404,9 @@ export class DonationBoxDonationService {
         donation_box_id,
         status = "",
         payment_method = "",
+        min_amount,
+        max_amount,
+        date = "",
         start_date,
         end_date,
       } = options;
@@ -231,6 +421,9 @@ export class DonationBoxDonationService {
         "receipt_number",
         "cheque_number",
         "bank_name",
+        "donation_box.shop_name",
+        "donation_box.key_no",
+        "donation_box.box_id_no",
       ];
 
       // Build query with relations
@@ -246,8 +439,6 @@ export class DonationBoxDonationService {
         search,
         status,
         payment_method,
-        start_date,
-        end_date,
       };
 
       if (donation_box_id) {
@@ -256,11 +447,42 @@ export class DonationBoxDonationService {
 
       applyCommonFilters(query, filters, searchFields, "donation_box_donation");
 
-      // Apply geographic restriction through parent donation box's city_id
-      if (assignedCityIds && assignedCityIds.length > 0) {
-        query.andWhere("donation_box.city_id IN (:...assignedCityIds)", {
-          assignedCityIds,
+      this.applyCollectionDateFilter(query, { date, start_date, end_date });
+
+      const hybridFilters: HybridFilter[] = [];
+      const minAmount = Number(min_amount);
+      if (Number.isFinite(minAmount)) {
+        hybridFilters.push({
+          column: "collection_amount",
+          operator: "gte",
+          value: minAmount,
         });
+      }
+      const maxAmount = Number(max_amount);
+      if (Number.isFinite(maxAmount)) {
+        hybridFilters.push({
+          column: "collection_amount",
+          operator: "lte",
+          value: maxAmount,
+        });
+      }
+      if (hybridFilters.length) {
+        applyHybridFilters(query, hybridFilters, "donation_box_donation");
+      }
+
+      if (geoScope) {
+        this.geographicScopeService.applyToQuery(
+          query,
+          "donation_box_donations",
+          "donation_box_donation",
+          geoScope,
+          { donationBoxAlias: "donation_box" },
+        );
+      }
+
+      if (currentUser?.id) {
+        const scope = await this.resolveCollectionScope(currentUser);
+        this.applyCollectionListDataScope(query, scope, geoScope);
       }
 
       // Apply sorting (whitelist to prevent SQL injection)
@@ -309,7 +531,13 @@ export class DonationBoxDonationService {
     try {
       const collection = await this.donationBoxDonationRepository.findOne({
         where: { id },
-        relations: ["donation_box", "collected_by", "verified_by"],
+        relations: [
+          "donation_box",
+          "collected_by",
+          "verified_by",
+          "created_by",
+          "updated_by",
+        ],
       });
 
       if (!collection) {
@@ -367,10 +595,12 @@ export class DonationBoxDonationService {
         );
       }
 
-      // Auto-populate collected_by_id if not provided and current user is available
-      const userId = currentUserId || this.getCurrentUserId();
-      if (!updateDonationBoxDonationDto.collected_by_id && userId) {
-        updateDonationBoxDonationDto.collected_by_id = userId;
+      const auditUserId = this.donationBoxDonationAuditUserId(currentUserId);
+      if (
+        updateDonationBoxDonationDto.collected_by_id === undefined &&
+        auditUserId
+      ) {
+        updateDonationBoxDonationDto.collected_by_id = auditUserId;
       }
 
       // If donation_box_id is being changed, validate the new box exists
@@ -390,18 +620,44 @@ export class DonationBoxDonationService {
         }
       }
 
-      // Update the entity
-      await this.donationBoxDonationRepository.update(
-        id,
+      const patch = this.buildDonationBoxDonationPatch(
         updateDonationBoxDonationDto,
       );
+      if (auditUserId != null) {
+        patch.updated_by = auditUserId;
+      }
 
-      // Dashboard aggregates removed (fundraising dashboard reads directly from main tables)
+      const auditChanges = buildDonationBoxDonationFieldChanges(
+        collection as unknown as Record<string, unknown>,
+        patch,
+      );
 
-      // Return updated entity with relations
+      if (Object.keys(patch).length > 0) {
+        await this.donationBoxDonationRepository.update(id, patch as any);
+      }
+
+      if (auditChanges.length > 0) {
+        const action = auditChanges.some((c) => c.field === "status")
+          ? DonationBoxDonationAuditAction.STATUS_CHANGED
+          : DonationBoxDonationAuditAction.UPDATED;
+        await this.donationBoxDonationAuditService.log({
+          donationBoxDonationId: id,
+          action,
+          source: DonationBoxDonationAuditSource.STAFF_UI,
+          changes: auditChanges,
+          performedByUserId: auditUserId,
+        });
+      }
+
       return await this.donationBoxDonationRepository.findOne({
         where: { id },
-        relations: ["donation_box", "collected_by", "verified_by"],
+        relations: [
+          "donation_box",
+          "collected_by",
+          "verified_by",
+          "created_by",
+          "updated_by",
+        ],
       });
     } catch (error) {
       console.log("error", error);
@@ -415,7 +671,7 @@ export class DonationBoxDonationService {
   /**
    * Soft delete a collection record (archive)
    */
-  async remove(id: number) {
+  async remove(id: number, currentUserId?: number) {
     try {
       const collection = await this.donationBoxDonationRepository.findOne({
         where: { id },
@@ -427,10 +683,32 @@ export class DonationBoxDonationService {
         );
       }
 
-      // Soft delete by setting is_archived to true
-      await this.donationBoxDonationRepository.update(id, {
-        is_archived: true,
-      });
+      const auditUserId = this.donationBoxDonationAuditUserId(currentUserId);
+      const archivePatch: Record<string, unknown> = { is_archived: true };
+      if (auditUserId != null) {
+        archivePatch.updated_by = auditUserId;
+      }
+
+      const auditChanges = buildDonationBoxDonationFieldChanges(
+        collection as unknown as Record<string, unknown>,
+        archivePatch,
+      );
+
+      if (auditChanges.length > 0) {
+        await this.donationBoxDonationAuditService.log({
+          donationBoxDonationId: id,
+          action: DonationBoxDonationAuditAction.ARCHIVED,
+          source: DonationBoxDonationAuditSource.STAFF_UI,
+          changes: auditChanges,
+          performedByUserId: auditUserId,
+          metadata: {
+            collection_amount: collection.collection_amount,
+            donation_box_id: collection.donation_box_id,
+          },
+        });
+      }
+
+      await this.donationBoxDonationRepository.update(id, archivePatch as any);
 
       return { message: "Collection record archived successfully" };
     } catch (error) {
@@ -505,7 +783,10 @@ export class DonationBoxDonationService {
    * Get a donation box by ID (for geographic access check in controller).
    */
   async getDonationBoxById(boxId: number): Promise<DonationBox | null> {
-    return this.donationBoxRepository.findOne({ where: { id: boxId } });
+    return this.donationBoxRepository.findOne({
+      where: { id: boxId },
+      relations: ["created_by"],
+    });
   }
 
   async getDonationBoxDonationListForDropdown(options?: {

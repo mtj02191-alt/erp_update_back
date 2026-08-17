@@ -70,7 +70,7 @@ export class WhatsAppMessage {
     type: "varchar",
     length: 50,
     nullable: false,
-    default: "Pending Reply",
+    default: "pending_reply",
   })
   status: string;
 

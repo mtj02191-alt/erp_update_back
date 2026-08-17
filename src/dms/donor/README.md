@@ -1,6 +1,6 @@
-# Donor Management System (DMS)
+# MTJF Solutions (DMS)
 
-Complete donor management system supporting both Individual and CSR (Corporate Social Responsibility) donors.
+Complete MTJF Solutions supporting both Individual and CSR (Corporate Social Responsibility) donors.
 
 ## Features
 

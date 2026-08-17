@@ -373,7 +373,13 @@ export function applyHybridFilters(
     const { value, operator, column } = filter;
 
     // Validate required fields
-    if (value === undefined || value === null || !operator || !column) {
+    if (
+      value === undefined ||
+      value === null ||
+      value === "" ||
+      !operator ||
+      !column
+    ) {
       console.warn(`Invalid hybrid filter at index ${index}:`, filter);
       return;
     }

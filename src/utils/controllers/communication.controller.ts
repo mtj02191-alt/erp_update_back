@@ -63,7 +63,7 @@ export class CommunicationController {
       }
 
       const donorName =
-        donor.name || donor.first_name || donor.company_name || "Valued Donor";
+        donor.name || donor.first_name || donor.email || "Valued Donor";
       const donorEmail = donor.email;
       const donorPhone = donor.phone;
       const amount = donation.amount || donation.paid_amount || 0;
@@ -132,9 +132,11 @@ export class CommunicationController {
       // Update donation flags if messages sent successfully
       if (results.email.sent || results.whatsapp.sent) {
         try {
-          // You might want to update donation.message_sent and email_sent flags here
-          // This would require injecting the donation repository or adding a method to DonationsService
-        } catch (updateError) {
+          await this.donationsService.markDonationThanksSent(id, {
+            email: results.email.sent,
+            whatsapp: results.whatsapp.sent,
+          });
+        } catch (updateError: any) {
           this.logger.warn(
             `Failed to update donation flags: ${updateError.message}`,
           );
@@ -214,7 +216,7 @@ export class CommunicationController {
       }
 
       const donorName =
-        donor.name || donor.first_name || donor.company_name || "Valued Donor";
+        donor.name || donor.first_name || donor.email || "Valued Donor";
       const donorEmail = donor.email;
       const donorPhone = donor.phone;
       const amount = donation.amount || donation.paid_amount || 0;

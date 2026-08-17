@@ -827,7 +827,7 @@ export class CeoNotesService {
         ...record,
         source: "visitor-record",
         type: recordType,
-        status: record.status || "Pending"
+        status: record.status || "pending"
       }));
 
       const combined = [...processedNotes, ...processedRecords];

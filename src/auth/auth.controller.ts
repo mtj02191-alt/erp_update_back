@@ -12,6 +12,8 @@ import {
 import { Response, Request } from "express";
 import { AuthService } from "./auth.service";
 import { JwtGuard } from "./jwt.guard";
+import { UsersService } from "../users/users.service";
+import { ResetPasswordDto } from "../users/dto/reset-password.dto";
 
 interface LoginDto {
   email: string;
@@ -20,7 +22,10 @@ interface LoginDto {
 
 @Controller("auth")
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(
+    private authService: AuthService,
+    private usersService: UsersService,
+  ) {}
 
   @Post("login")
   @HttpCode(HttpStatus.OK)
@@ -62,6 +67,13 @@ export class AuthController {
     };
   }
 
+  /** Public: email a temporary password if the account exists. */
+  @Post("forgot-password")
+  @HttpCode(HttpStatus.OK)
+  async forgotPassword(@Body() body: ResetPasswordDto) {
+    return this.usersService.forgotPassword(body.email);
+  }
+
   @Post("logout")
   @HttpCode(HttpStatus.OK)
   async logout(@Res({ passthrough: true }) response: Response) {
@@ -93,6 +105,10 @@ export class AuthController {
     // Extract permissions from the user relation
     const permissions = user.permissions?.permissions || {};
 
+    const geographic = this.authService.getGeographicContextForUser(user);
+    const geographicScope =
+      await this.authService.getGeographicScopeSummaryForUser(user);
+
     return {
       user: {
         id: user.id,
@@ -109,6 +125,8 @@ export class AuthController {
         joining_date: user.joining_date,
         emergency_contact: user.emergency_contact,
         blood_group: user.blood_group,
+        ...geographic,
+        geographic_scope: geographicScope,
       },
       permissions,
     };

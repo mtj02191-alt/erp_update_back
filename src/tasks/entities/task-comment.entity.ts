@@ -15,6 +15,9 @@ export class TaskComment extends BaseEntity {
   @Column({ type: "text" })
   content: string;
 
+  @Column({ type: "int", array: true, nullable: true })
+  mentioned_user_ids: number[] | null;
+
   @ManyToOne(() => User, (user) => user.id, {
     nullable: true,
     onDelete: "SET NULL",

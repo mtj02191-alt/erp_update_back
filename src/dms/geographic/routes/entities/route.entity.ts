@@ -23,10 +23,15 @@ export enum RouteType {
 
 @Entity("routes")
 @Index("idx_route_name", ["name"])
+@Index("idx_route_no", ["route_no"])
 @Index("idx_route_type", ["route_type"])
 export class Route extends BaseEntity {
   @Column({ length: 100 })
   name: string;
+
+  /** Field-sheet route number (e.g. "16"). */
+  @Column({ length: 50, nullable: true })
+  route_no: string | null;
 
   @Column({ length: 20, nullable: true })
   code: string;

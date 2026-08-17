@@ -11,6 +11,13 @@ import { CreateWorkflowTemplateDto } from "./dto/create-workflow-template.dto";
 import { UpdateWorkflowTemplateDto } from "./dto/update-workflow-template.dto";
 import { CreateTemplateStepDto } from "./dto/create-template-step.dto";
 import { ReorderTemplateStepsDto } from "./dto/reorder-template-steps.dto";
+import {
+  clampLookupLimit,
+  LOOKUP_PROFILES,
+  LookupOption,
+  selectEntityFields,
+  toLookupOptions,
+} from "../../utils/lookup";
 
 @Injectable()
 export class ProgressWorkflowTemplatesService {
@@ -127,6 +134,38 @@ export class ProgressWorkflowTemplatesService {
     return this.templatesRepo.find({
       where: { is_archived: false },
       order: { created_at: "DESC" },
+    });
+  }
+
+  async listForOptions(params?: {
+    search?: string;
+    limit?: number;
+    activeOnly?: boolean;
+  }): Promise<LookupOption[]> {
+    const profile = LOOKUP_PROFILES.workflow_templates;
+    const take = clampLookupLimit(params?.limit, profile);
+    const qb = this.templatesRepo
+      .createQueryBuilder("t")
+      .select(selectEntityFields("t", profile.fields))
+      .where("t.is_archived = false")
+      .orderBy("t.name", "ASC")
+      .take(take);
+
+    if (params?.activeOnly !== false) {
+      qb.andWhere("t.is_active = true");
+    }
+    if (params?.search?.trim()) {
+      qb.andWhere("(t.name ILIKE :search OR t.code ILIKE :search)", {
+        search: `%${params.search.trim()}%`,
+      });
+    }
+
+    const rows = await qb.getMany();
+    return toLookupOptions(rows as unknown as Array<Record<string, unknown>>, {
+      valueField: profile.valueField,
+      labelField: profile.labelField,
+      labelFallback: (row) =>
+        row.code ? String(row.code) : `Template #${row.id}`,
     });
   }
 

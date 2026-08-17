@@ -8,6 +8,7 @@ export enum NotificationType {
   WARNING = "warning",
   ERROR = "error",
   DONATION = "donation",
+  TASK = "task",
   SYSTEM = "system",
 }
 

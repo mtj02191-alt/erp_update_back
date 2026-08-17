@@ -19,6 +19,10 @@ import { UpdateCampaignDto } from "./dto/update-campaign.dto";
 import { CampaignFiltersDto } from "./dto/campaign-filters.dto";
 import { SetCampaignStatusDto } from "./dto/set-status.dto";
 import { CampaignReportQueryDto } from "./dto/report-query.dto";
+import {
+  CreateCampaignDonationItemDto,
+  UpdateCampaignDonationItemDto,
+} from "./dto/campaign-donation-item.dto";
 import { ConditionalJwtGuard } from "../../auth/guards/conditional-jwt.guard";
 import { PermissionsGuard } from "../../permissions/guards/permissions.guard";
 import { RequiredPermissions } from "../../permissions";
@@ -95,6 +99,122 @@ export class CampaignsController {
         success: true,
         message: "Campaign report retrieved",
         data: result,
+      });
+    } catch (error) {
+      const status = error.message?.includes("not found")
+        ? HttpStatus.NOT_FOUND
+        : HttpStatus.BAD_REQUEST;
+      return res.status(status).json({
+        success: false,
+        message: error.message,
+        data: null,
+      });
+    }
+  }
+
+  @Get(":id/donation-items")
+  @UseGuards(ConditionalJwtGuard, PermissionsGuard)
+  @RequiredPermissions(["dms.campaigns.view", "super_admin"])
+  async listDonationItems(
+    @Param("id") id: string,
+    @Query("active_only") activeOnly: string,
+    @Res() res: Response,
+  ) {
+    try {
+      const result = await this.campaignsService.listDonationItems(
+        +id,
+        activeOnly === "true",
+      );
+      return res.status(HttpStatus.OK).json({
+        success: true,
+        message: "Campaign donation items retrieved",
+        data: result,
+      });
+    } catch (error) {
+      const status = error.message?.includes("not found")
+        ? HttpStatus.NOT_FOUND
+        : HttpStatus.BAD_REQUEST;
+      return res.status(status).json({
+        success: false,
+        message: error.message,
+        data: [],
+      });
+    }
+  }
+
+  @Post(":id/donation-items")
+  @UseGuards(ConditionalJwtGuard, PermissionsGuard)
+  @RequiredPermissions(["dms.campaigns.update", "super_admin"])
+  async createDonationItem(
+    @Param("id") id: string,
+    @Body() dto: CreateCampaignDonationItemDto,
+    @Res() res: Response,
+  ) {
+    try {
+      const result = await this.campaignsService.createDonationItem(+id, dto);
+      return res.status(HttpStatus.CREATED).json({
+        success: true,
+        message: "Donation item created",
+        data: result,
+      });
+    } catch (error) {
+      const status = error.message?.includes("not found")
+        ? HttpStatus.NOT_FOUND
+        : HttpStatus.BAD_REQUEST;
+      return res.status(status).json({
+        success: false,
+        message: error.message,
+        data: null,
+      });
+    }
+  }
+
+  @Patch(":id/donation-items/:itemId")
+  @UseGuards(ConditionalJwtGuard, PermissionsGuard)
+  @RequiredPermissions(["dms.campaigns.update", "super_admin"])
+  async updateDonationItem(
+    @Param("id") id: string,
+    @Param("itemId") itemId: string,
+    @Body() dto: UpdateCampaignDonationItemDto,
+    @Res() res: Response,
+  ) {
+    try {
+      const result = await this.campaignsService.updateDonationItem(
+        +id,
+        +itemId,
+        dto,
+      );
+      return res.status(HttpStatus.OK).json({
+        success: true,
+        message: "Donation item updated",
+        data: result,
+      });
+    } catch (error) {
+      const status = error.message?.includes("not found")
+        ? HttpStatus.NOT_FOUND
+        : HttpStatus.BAD_REQUEST;
+      return res.status(status).json({
+        success: false,
+        message: error.message,
+        data: null,
+      });
+    }
+  }
+
+  @Delete(":id/donation-items/:itemId")
+  @UseGuards(ConditionalJwtGuard, PermissionsGuard)
+  @RequiredPermissions(["dms.campaigns.update", "super_admin"])
+  async removeDonationItem(
+    @Param("id") id: string,
+    @Param("itemId") itemId: string,
+    @Res() res: Response,
+  ) {
+    try {
+      await this.campaignsService.removeDonationItem(+id, +itemId);
+      return res.status(HttpStatus.OK).json({
+        success: true,
+        message: "Donation item removed",
+        data: null,
       });
     } catch (error) {
       const status = error.message?.includes("not found")

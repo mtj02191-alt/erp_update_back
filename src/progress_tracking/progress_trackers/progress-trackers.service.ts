@@ -249,7 +249,8 @@ export class ProgressTrackersService {
     const { steps: templateSteps } =
       await this.resolveTemplateStepsWithParentFallback(tid);
 
-    const auditUser = currentUser?.id === -1 ? null : (currentUser ?? null);
+    const auditUser =
+      currentUser?.id === -1 ? null : currentUser ?? null;
 
     for (const batchId of batchIds) {
       const existing = await this.trackerStepsRepo.count({
@@ -394,12 +395,7 @@ export class ProgressTrackersService {
       row.allocation_batches = [];
       const did = row.donation_id != null ? Number(row.donation_id) : NaN;
       const tid = row.template_id != null ? Number(row.template_id) : NaN;
-      if (
-        !Number.isFinite(did) ||
-        did <= 0 ||
-        !Number.isFinite(tid) ||
-        tid <= 0
-      )
+      if (!Number.isFinite(did) || did <= 0 || !Number.isFinite(tid) || tid <= 0)
         continue;
 
       const rawBatches = await this.allocationsRepo
@@ -422,19 +418,13 @@ export class ProgressTrackersService {
       for (const r of rawBatches || []) {
         const raw = r as Record<string, unknown>;
         const bid = Number(
-          raw.batch_id ??
-            raw.a_batch_id ??
-            raw.donation_batch_allocations_batch_id,
+          raw.batch_id ?? raw.a_batch_id ?? raw.donation_batch_allocations_batch_id,
         );
         const bnum = Number(
-          raw.batch_number ??
-            raw.b_batch_number ??
-            raw.progress_workflow_batches_batch_number,
+          raw.batch_number ?? raw.b_batch_number ?? raw.progress_workflow_batches_batch_number,
         );
         const parts = Number(
-          raw.parts_count ??
-            raw.a_parts_count ??
-            raw.donation_batch_allocations_parts_count,
+          raw.parts_count ?? raw.a_parts_count ?? raw.donation_batch_allocations_parts_count,
         );
         if (!Number.isFinite(bid) || bid <= 0 || seen.has(bid)) continue;
         seen.add(bid);
@@ -497,9 +487,7 @@ export class ProgressTrackersService {
    * All active trackers for a donation (one per workflow template is typical).
    * Each entry is the same shape as getTrackerDetail (steps, template, batch evidence, etc.).
    */
-  async getAllTrackersByDonationId(
-    donationId: number,
-  ): Promise<ProgressTracker[]> {
+  async getAllTrackersByDonationId(donationId: number): Promise<ProgressTracker[]> {
     const rows = await this.trackersRepo.find({
       where: { donation_id: donationId, is_archived: false },
       order: { id: "ASC" },
@@ -517,8 +505,7 @@ export class ProgressTrackersService {
   /** @deprecated Prefer getAllTrackersByDonationId — kept for callers that expect a single tracker. */
   async getTrackerByDonationId(donationId: number) {
     const all = await this.getAllTrackersByDonationId(donationId);
-    if (!all.length)
-      throw new NotFoundException("Tracker not found for donation");
+    if (!all.length) throw new NotFoundException("Tracker not found for donation");
     return all[0];
   }
 
@@ -555,7 +542,9 @@ export class ProgressTrackersService {
     const donationId =
       (tr as any).donation_id != null ? Number((tr as any).donation_id) : NaN;
     if (!Number.isFinite(donationId) || donationId <= 0) {
-      throw new BadRequestException("This tracker is not linked to a donation");
+      throw new BadRequestException(
+        "This tracker is not linked to a donation",
+      );
     }
 
     const templateId =

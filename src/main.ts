@@ -40,9 +40,12 @@ async function bootstrap() {
     return origin.toLowerCase().replace(/\/$/, "");
   };
 
-  // Stripe webhook needs raw body for signature verification; all other routes use JSON
+  // Stripe + Resend webhooks need raw body for signature verification; all other routes use JSON
   app.use((req, res, next) => {
-    if (req.originalUrl === "/donations/public/stripe/webhook") {
+    if (
+      req.originalUrl === "/donations/public/stripe/webhook" ||
+      req.originalUrl === "/email/public/resend/webhook"
+    ) {
       return bodyParser.raw({ type: "application/json" })(req, res, next);
     }
     return bodyParser.json({ limit: "10mb" })(req, res, next);

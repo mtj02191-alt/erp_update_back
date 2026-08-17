@@ -5,14 +5,17 @@ import {
   IsEnum,
   MinLength,
   IsNotEmpty,
-  ValidateIf,
-  IsPhoneNumber,
   IsNumber,
+  IsDateString,
+  IsInt,
+  IsBoolean,
 } from "class-validator";
+import { Type } from "class-transformer";
 import { DonorType } from "../entities/donor.entity";
+import { DonorPipelineStage } from "../pipeline/donor-pipeline.constants";
+import { OrganizationAffiliationRole } from "../../organizations/entities/donor-organization-affiliation.entity";
 
 export class CreateDonorDto {
-  // Common fields for all donors
   @IsEnum(DonorType)
   @IsNotEmpty()
   donor_type: DonorType;
@@ -54,57 +57,44 @@ export class CreateDonorDto {
   @IsOptional()
   notes?: string;
 
-  // Individual Donor fields (required when donor_type = 'individual')
-  @ValidateIf((o) => o.donor_type === DonorType.INDIVIDUAL)
+  @IsOptional()
+  @IsDateString()
+  date_of_birth?: string;
+
+  /** Required — for CSR this is the contact person name. */
   @IsString()
-  @IsNotEmpty({ message: "Name is required for individual donors" })
+  @IsNotEmpty({ message: "Name is required" })
   name?: string;
 
-  @ValidateIf((o) => o.donor_type === DonorType.INDIVIDUAL)
   @IsString()
   @IsOptional()
   first_name?: string;
 
-  @ValidateIf((o) => o.donor_type === DonorType.INDIVIDUAL)
   @IsString()
   @IsOptional()
   last_name?: string;
 
-  // CSR/Corporate Donor fields (required when donor_type = 'csr')
-  @ValidateIf((o) => o.donor_type === DonorType.CSR)
-  @IsString()
-  @IsNotEmpty({ message: "Company name is required for CSR donors" })
-  company_name?: string;
-
-  @ValidateIf((o) => o.donor_type === DonorType.CSR)
-  @IsString()
+  /**
+   * Required for CSR (enforced in DonorService.register).
+   * Optional for individual (person ↔ org affiliation).
+   */
   @IsOptional()
-  company_registration?: string;
+  @Type(() => Number)
+  @IsInt()
+  organization_id?: number;
 
-  @ValidateIf((o) => o.donor_type === DonorType.CSR)
-  @IsString()
-  @IsNotEmpty({ message: "Contact person is required for CSR donors" })
-  contact_person?: string;
-
-  @ValidateIf((o) => o.donor_type === DonorType.CSR)
-  @IsString()
   @IsOptional()
-  designation?: string;
+  @Type(() => Number)
+  @IsInt()
+  organization_branch_id?: number;
 
-  @ValidateIf((o) => o.donor_type === DonorType.CSR)
-  @IsString()
   @IsOptional()
-  company_address?: string;
+  @IsEnum(OrganizationAffiliationRole)
+  affiliation_role?: OrganizationAffiliationRole;
 
-  @ValidateIf((o) => o.donor_type === DonorType.CSR)
-  @IsString()
   @IsOptional()
-  company_phone?: string;
-
-  @ValidateIf((o) => o.donor_type === DonorType.CSR)
-  @IsEmail()
-  @IsOptional()
-  company_email?: string;
+  @IsBoolean()
+  affiliation_is_primary?: boolean;
 
   @IsOptional()
   @IsNumber()
@@ -112,4 +102,8 @@ export class CreateDonorDto {
 
   @IsNumber()
   assigned_to_user_id?: number;
+
+  @IsOptional()
+  @IsEnum(DonorPipelineStage)
+  pipeline_stage?: DonorPipelineStage;
 }

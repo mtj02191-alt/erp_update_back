@@ -11,6 +11,7 @@ import {
   BadRequestException,
 } from "@nestjs/common";
 import { UsersService } from "./users.service";
+import { UserPerformanceService } from "./user-performance.service";
 import { JwtGuard } from "../auth/jwt.guard";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { User, Department } from "./user.entity";
@@ -26,7 +27,10 @@ import { RequiredPermissions } from "../permissions/decorators/require-permissio
 @Controller("users")
 @UseGuards(JwtGuard, PermissionsGuard)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly userPerformanceService: UserPerformanceService,
+  ) {}
 
   private parseUserIdOrThrow(id: string): number {
     const parsedId = Number(id);
@@ -144,6 +148,31 @@ export class UsersController {
     );
   }
 
+  @Get(":id/performance-dashboard")
+  async getPerformanceDashboard(
+    @Param("id") id: string,
+    @CurrentUser() user: User,
+  ) {
+    const data = await this.userPerformanceService.getPerformanceDashboard(
+      this.parseUserIdOrThrow(id),
+      user,
+    );
+    return { success: true, data };
+  }
+
+  @Get(":id/reveal-password")
+  @RequiredPermissions(["super_admin", "read_only_super_admin", "users.update"])
+  async revealPassword(@Param("id") id: string) {
+    const data = await this.usersService.revealUserPassword(
+      this.parseUserIdOrThrow(id),
+    );
+    return {
+      success: true,
+      message: "Password revealed",
+      data,
+    };
+  }
+
   @Get(":id")
   @RequiredPermissions([
     "users.view",
@@ -152,7 +181,7 @@ export class UsersController {
     "super_admin",
   ])
   async findOne(@Param("id") id: string) {
-    return this.usersService.findOne(this.parseUserIdOrThrow(id));
+    return this.usersService.findOneForView(this.parseUserIdOrThrow(id));
   }
 
   @Patch(":id")

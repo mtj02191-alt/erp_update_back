@@ -1,6 +1,8 @@
 import { BaseEntity } from "src/utils/base_utils/entities/baseEntity";
-import { Column, Entity, ManyToOne, JoinColumn, Index } from "typeorm";
+import { Column, Entity, ManyToOne, JoinColumn, Index, OneToMany } from "typeorm";
 import { Donor } from "../../dms/donor/entities/donor.entity";
+import { DonationAttachment } from "./donation-attachment.entity";
+import { Organization } from "../../dms/organizations/entities/organization.entity";
 
 //nullabe true to all column
 @Entity("donations")
@@ -13,8 +15,22 @@ export class Donation extends BaseEntity {
   @Column({ nullable: true, default: null })
   donor_id: number;
 
+  /**
+   * Soft / org credit for corporate gifts. Additive nullable — existing donations
+   * keep donor_id only; never required. Does not replace hard credit on donor_id.
+   */
+  @Column({ type: "int", nullable: true, default: null })
+  organization_id: number | null;
+
+  @ManyToOne(() => Organization, { nullable: true, onDelete: "SET NULL" })
+  @JoinColumn({ name: "organization_id" })
+  organization: Organization | null;
+
   @Column({ type: "bigint", nullable: true, default: null })
   campaign_id: number | null;
+
+  @Column({ type: "bigint", nullable: true, default: null })
+  appeal_id: number | null;
 
   @Column({ type: "bigint", nullable: true, default: null })
   sub_program_id: number | null;
@@ -55,6 +71,13 @@ export class Donation extends BaseEntity {
 
   @Column({ type: "varchar", nullable: true, default: null })
   city: string;
+
+  @Column({ type: "text", nullable: true, default: null })
+  address: string;
+
+  /** Normalized lowercase search blob built from country, city, and address. */
+  @Column({ type: "text", nullable: true, default: null })
+  geo_search: string;
 
   @Column({ type: "varchar", nullable: true, default: "pending" })
   status: string;
@@ -105,4 +128,33 @@ export class Donation extends BaseEntity {
   /** Optional: names for Qurbani / on-behalf dedications (free text). */
   @Column({ type: "text", nullable: true, default: null })
   on_behalf_names: string | null;
+
+  /** Bank reconciliation — Faysal / other statement imports (additive, nullable). */
+  @Column({ type: "varchar", nullable: true, default: null })
+  tran_seq_no: string | null;
+
+  @Column({ type: "date", nullable: true, default: null })
+  effect_date: Date | null;
+
+  @Column({ type: "varchar", nullable: true, default: null })
+  tran_type: string | null;
+
+  @Column({ type: "text", nullable: true, default: null })
+  tran_description: string | null;
+
+  @Column({ type: "varchar", nullable: true, default: null })
+  stan: string | null;
+
+  @Column({ type: "varchar", nullable: true, default: null })
+  reference_no: string | null;
+
+  /**
+   * Website non-Stripe recurring intent. Enrolled at create (including pending).
+   * Shape: { enroll, pledge_mode?, prepaid_months?, frequency?, lines[], activated_at? }
+   */
+  @Column({ type: "jsonb", nullable: true, default: null })
+  manual_recurring_intent: Record<string, unknown> | null;
+
+  @OneToMany(() => DonationAttachment, (attachment) => attachment.donation)
+  attachments: DonationAttachment[];
 }

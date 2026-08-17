@@ -4,6 +4,10 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, In, Not, IsNull, FindOperator } from "typeorm";
 import { Donation } from "../../donations/entities/donation.entity";
 import { DonationsService } from "../../donations/donations.service";
+import { DonationPendingFollowUpService } from "../../donations/donation-pending-follow-up.service";
+import { ManualRecurringReminderService } from "../../dms/manual_recurring/manual-recurring-reminder.service";
+import { ProcessManualRecurringRemindersDto } from "../../dms/manual_recurring/dto/manual-recurring-filters.dto";
+import { DmsTodosService } from "../../dms/todos/dms-todos.service";
 
 @Injectable()
 export class DmsCronsService {
@@ -13,7 +17,75 @@ export class DmsCronsService {
     @InjectRepository(Donation)
     private readonly donationRepository: Repository<Donation>,
     private readonly donationsService: DonationsService,
+    private readonly donationPendingFollowUpService: DonationPendingFollowUpService,
+    private readonly manualRecurringReminderService: ManualRecurringReminderService,
+    private readonly dmsTodosService: DmsTodosService,
   ) {}
+
+  /**
+   * Every minute — today's **website** donations (pending or failed, PKT), 3+ minutes old.
+   */
+  @Cron("* * * * *", {
+    name: "pending-donation-call-center-follow-up",
+    timeZone: "Asia/Karachi",
+  })
+  async handlePendingDonationCallCenterFollowUp() {
+    try {
+      const result =
+        await this.donationPendingFollowUpService.processPendingDonationFollowUps(
+          {
+            enforcePendingMinutes: true,
+          },
+        );
+      if (result.created > 0) {
+        this.logger.log(
+          `Pending donation follow-up: created ${result.created} task(s) — ids: ${result.taskIds.join(", ")}`,
+        );
+      }
+    } catch (error: any) {
+      this.logger.error(
+        `Pending donation call-center follow-up cron failed: ${error?.message}`,
+        error?.stack,
+      );
+    }
+  }
+
+  /**
+   * Every day 9:00 AM (Asia/Karachi).
+   * Runs due recurring-campaign automations:
+   * - daily campaigns every day
+   * - weekly campaigns on Saturday & Sunday (remind if no donation that week)
+   * - monthly (+ bi/quarter/year) on the 2nd
+   */
+  @Cron("0 9 * * *", {
+    name: "recurring-campaign-donor-reminders",
+    timeZone: "Asia/Karachi",
+  })
+  async handleRecurringCampaignDonorReminders() {
+    try {
+      const result =
+        await this.manualRecurringReminderService.processDueReminders();
+      if (
+        result.reminders_sent > 0 ||
+        result.thanks_sent > 0 ||
+        result.reminders_failed > 0
+      ) {
+        this.logger.log(
+          `Recurring campaign reminders [${result.frequencies.join(",")}]: sent ${result.reminders_sent}, thanks ${result.thanks_sent}, failed ${result.reminders_failed}, skipped donated ${result.skipped_donated}`,
+        );
+      }
+    } catch (error: any) {
+      this.logger.error(
+        `Recurring campaign donor reminders cron failed: ${error?.message}`,
+        error?.stack,
+      );
+    }
+  }
+
+  /** @deprecated alias kept for older references */
+  async handleManualRecurringDonationReminders() {
+    return this.handleRecurringCampaignDonorReminders();
+  }
 
   /**
    * Nightly cron - Runs at 1:30 AM every day (Asia/Karachi)
@@ -249,5 +321,78 @@ export class DmsCronsService {
       );
       throw error;
     }
+  }
+
+  async runManualRecurringDonationReminders(
+    options?: ProcessManualRecurringRemindersDto,
+  ) {
+    return this.manualRecurringReminderService.processMonthlyReminders({
+      ...(options || {}),
+      run_due: options?.run_due ?? !options?.frequency,
+    });
+  }
+
+  /**
+   * Safety net: activate manual recurring for completed donations whose intent
+   * was never applied (missed IPN / status race). Every 15 minutes.
+   */
+  @Cron("*/15 * * * *", {
+    name: "activate-manual-recurring-intents",
+    timeZone: "Asia/Karachi",
+  })
+  async handleActivateManualRecurringIntents() {
+    try {
+      const result =
+        await this.donationsService.activatePendingManualRecurringIntents(100);
+      if (result.activated > 0 || result.scanned > 0) {
+        this.logger.log(
+          `Manual recurring intent activation — scanned: ${result.scanned}, activated: ${result.activated}, skipped: ${result.skipped}`,
+        );
+      }
+      return result;
+    } catch (error: any) {
+      this.logger.error(
+        `Manual recurring intent activation cron failed: ${error?.message}`,
+        error?.stack,
+      );
+      throw error;
+    }
+  }
+
+  async runActivateManualRecurringIntents(limit?: number) {
+    return this.donationsService.activatePendingManualRecurringIntents(
+      limit ?? 100,
+    );
+  }
+
+  /**
+   * Daily 00:10 Asia/Karachi — for recurring DMS todos whose due date has
+   * arrived (due_date <= today), create the next occurrence even if the
+   * previous one is still pending / not marked done.
+   */
+  @Cron("10 0 * * *", {
+    name: "dms-todos-spawn-due-recurring",
+    timeZone: "Asia/Karachi",
+  })
+  async handleDmsTodosDueRecurringSpawn() {
+    try {
+      const result = await this.dmsTodosService.processDueRecurringTodos();
+      if (result.scanned > 0 || result.spawned > 0) {
+        this.logger.log(
+          `DMS todos recurring spawn — scanned: ${result.scanned}, spawned: ${result.spawned}, skipped: ${result.skipped}`,
+        );
+      }
+      return result;
+    } catch (error: any) {
+      this.logger.error(
+        `DMS todos recurring spawn cron failed: ${error?.message}`,
+        error?.stack,
+      );
+      throw error;
+    }
+  }
+
+  async runDmsTodosDueRecurringSpawn(asOfDate?: string) {
+    return this.dmsTodosService.processDueRecurringTodos(asOfDate);
   }
 }

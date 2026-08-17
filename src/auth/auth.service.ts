@@ -2,12 +2,14 @@ import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { UsersService } from "../users/users.service";
 import { User } from "../users/user.entity";
+import { GeographicScopeService } from "../permissions/geographic-scope/geographic-scope.service";
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
+    private readonly geographicScopeService: GeographicScopeService,
   ) {}
 
   async validateUser(email: string, password: string): Promise<User> {
@@ -28,6 +30,13 @@ export class AuthService {
     // Extract permissions from the user relation
     const permissions = user?.permissions?.permissions || {};
 
+    const geographic = this.usersService.pickGeographicContext(user);
+    const scope = await this.geographicScopeService.resolveForUser(
+      user.id,
+      user.role,
+      user,
+    );
+
     return {
       token, // This will be set as cookie by controller
       user: {
@@ -46,9 +55,24 @@ export class AuthService {
         emergency_contact: user.emergency_contact,
         blood_group: user.blood_group,
         is_archived: user?.is_archived,
+        ...geographic,
+        geographic_scope: this.geographicScopeService.toScopeSummary(scope),
       },
       permissions, // Include permissions in login response
     };
+  }
+
+  getGeographicContextForUser(user: User) {
+    return this.usersService.pickGeographicContext(user);
+  }
+
+  async getGeographicScopeSummaryForUser(user: User) {
+    const scope = await this.geographicScopeService.resolveForUser(
+      user.id,
+      user.role,
+      user,
+    );
+    return this.geographicScopeService.toScopeSummary(scope);
   }
 
   async validateToken(token: string) {

@@ -8,6 +8,12 @@ DAILY
   01:30 AM  — Meezan Donation Status Sync     (dms_crons/dms-crons.service.ts)
   02:30 AM  — Dashboard Rebuild Nightly       (dashboard/dashboard-rebuild-cron.service.ts)
   09:00 AM  — Gold & Silver Price Fetch       (zakat/gold_silver_price/gold-silver-price-cron.service.ts)
+  09:00 AM  — Recurring Campaign Donor Reminders (dms_crons/dms-crons.service.ts)
+    • Daily campaigns: every day
+    • Weekly campaigns: Saturday & Sunday only (week donation window Mon–Sun)
+    • Monthly / bi-weekly / quarterly / yearly: on the 2nd
+    • Processes pledges in chunks (default 500, env MANUAL_RECURRING_CHUNK_SIZE)
+    • Optional pause between chunks: MANUAL_RECURRING_CHUNK_DELAY_MS (default 250ms)
 
 WEEKLY
 ------
@@ -20,6 +26,9 @@ MONTHLY
 MANUAL (API endpoints)
 ----------------------
   POST /dms-crons/sync-meezan       — One-time Meezan status sync   (dms_crons/dms-crons.controller.ts)
+  POST /dms-crons/manual-recurring-reminders — Recurring campaign reminder job (dms_crons/dms-crons.controller.ts)
+    • ?run_due=true (default when frequency omitted) — frequencies due today
+    • ?frequency=daily|weekly|monthly
   POST /donations-report/daily       — Manual daily report trigger   (donations_report/donations-report.controller.ts)
   POST /donations-report/weekly      — Manual weekly report trigger  (donations_report/donations-report.controller.ts)
   POST /donations-report/monthly     — Manual monthly report trigger (donations_report/donations-report.controller.ts)

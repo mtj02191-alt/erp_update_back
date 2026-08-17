@@ -20,6 +20,11 @@ export class CreateRouteDto {
 
   @IsString()
   @IsOptional()
+  @MaxLength(50, { message: "Route number must not exceed 50 characters" })
+  route_no?: string;
+
+  @IsString()
+  @IsOptional()
   @Length(1, 20, { message: "Route code must be 1-20 characters" })
   code?: string;
 

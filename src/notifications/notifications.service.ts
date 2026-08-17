@@ -3,7 +3,6 @@ import {
   NotFoundException,
   BadRequestException,
   Inject,
-  Optional,
   forwardRef,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
@@ -18,17 +17,6 @@ import {
 } from "../utils/filters/common-filter.util";
 import { NotificationsGateway } from "./notifications.gateway";
 
-interface PaginationOptions {
-  page: number;
-  pageSize: number;
-  sortField?: string;
-  sortOrder?: "ASC" | "DESC";
-  search?: string;
-  type?: string;
-  is_read?: boolean;
-  user_id?: number;
-}
-
 @Injectable()
 export class NotificationsService {
   // Define searchable columns for notification search
@@ -39,9 +27,8 @@ export class NotificationsService {
     private readonly notificationRepository: Repository<Notification>,
     @InjectRepository(UserNotification)
     private readonly userNotificationRepository: Repository<UserNotification>,
-    @Optional()
     @Inject(forwardRef(() => NotificationsGateway))
-    private readonly notificationsGateway?: NotificationsGateway,
+    private readonly notificationsGateway: NotificationsGateway,
   ) {}
 
   /**
@@ -99,7 +86,7 @@ export class NotificationsService {
       }
 
       // Send real-time notification via WebSocket
-      if (usersToNotify.length > 0 && this.notificationsGateway) {
+      if (usersToNotify.length > 0) {
         try {
           await this.notificationsGateway.sendNotificationToUsers(
             usersToNotify,
@@ -379,17 +366,11 @@ export class NotificationsService {
       const saved =
         await this.userNotificationRepository.save(userNotification);
 
-      // Update unread count via WebSocket
-      if (this.notificationsGateway) {
-        try {
-          const unreadCount = await this.getUnreadCount(userId);
-          // Emit unread count update to user's room
-          this.notificationsGateway.server
-            .to(`user_${userId}`)
-            .emit("unread_count", { count: unreadCount });
-        } catch (error) {
-          console.error("Failed to send WebSocket update:", error.message);
-        }
+      try {
+        const unreadCount = await this.getUnreadCount(userId);
+        this.notificationsGateway.emitUnreadCount(userId, unreadCount);
+      } catch (error) {
+        console.error("Failed to send WebSocket update:", error.message);
       }
 
       return saved;
@@ -419,6 +400,12 @@ export class NotificationsService {
         .andWhere("is_read = :is_read", { is_read: false })
         .andWhere("is_archived = :is_archived", { is_archived: false })
         .execute();
+
+      try {
+        this.notificationsGateway.emitUnreadCount(userId, 0);
+      } catch (error) {
+        console.error("Failed to send WebSocket unread sync:", error.message);
+      }
 
       return {
         message: "All notifications marked as read",

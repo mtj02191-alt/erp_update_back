@@ -20,29 +20,33 @@ import { PermissionsGuard } from "../../permissions/guards/permissions.guard";
 import { RequiredPermissions } from "../../permissions/decorators/require-permission.decorator";
 import { JwtGuard } from "src/auth/jwt.guard";
 import { CurrentUser } from "src/auth/current-user.decorator";
+import { GeographicScopeService } from "../../permissions/geographic-scope/geographic-scope.service";
 
 @Controller("donation-box")
 @UseGuards(JwtGuard, PermissionsGuard)
 export class DonationBoxController {
-  constructor(private readonly donationBoxService: DonationBoxService) {}
+  constructor(
+    private readonly donationBoxService: DonationBoxService,
+    private readonly geographicScopeService: GeographicScopeService,
+  ) {}
 
-  /**
-   * Check if user has geographic access to a donation box by its city_id.
-   * Throws ForbiddenException if user doesn't have access.
-   */
   private async checkGeographicAccess(
     userId: number,
-    cityId: number,
+    box: {
+      city_id?: number | null;
+      route_id?: number | null;
+      landmark_marketplace?: string | null;
+    },
+    userRole?: string,
+    userSnapshot?: Record<string, unknown> | null,
   ): Promise<void> {
-    const assignedCityIds =
-      await this.donationBoxService.resolveUserGeographyCityIds(userId);
-    // null means no geo restriction (super_admin, non-fund_raising, or no assignments)
-    if (assignedCityIds === null) return;
-    if (!assignedCityIds.includes(cityId)) {
-      throw new ForbiddenException(
-        "You do not have geographic access to this donation box",
-      );
-    }
+    await this.geographicScopeService.assertRecordAccess(
+      userId,
+      "donation_boxes",
+      box,
+      userRole,
+      userSnapshot as any,
+    );
   }
 
   @Post()
@@ -58,10 +62,16 @@ export class DonationBoxController {
   ) {
     try {
       // Geographic access check on the city being assigned
-      if (createDonationBoxDto.city_id) {
+      if (createDonationBoxDto.city_id || createDonationBoxDto.route_id) {
         await this.checkGeographicAccess(
           currentUser.id,
-          createDonationBoxDto.city_id,
+          {
+            city_id: createDonationBoxDto.city_id,
+            route_id: createDonationBoxDto.route_id,
+            landmark_marketplace: createDonationBoxDto.landmark_marketplace,
+          },
+          currentUser.role,
+          currentUser,
         );
       }
 
@@ -98,11 +108,23 @@ export class DonationBoxController {
   async getDonationBoxOptions(
     @Query("active") activeOnly?: string,
     @Query("status") status?: string,
+    @CurrentUser() currentUser?: any,
   ) {
-    return this.donationBoxService.getDonationBoxListForDropdown({
-      activeOnly: activeOnly === "true",
-      status: status || undefined,
-    });
+    const geoScope = currentUser?.id
+      ? await this.geographicScopeService.resolveForUser(
+          currentUser.id,
+          currentUser.role,
+          currentUser,
+        )
+      : null;
+
+    return this.donationBoxService.getDonationBoxListForDropdown(
+      {
+        activeOnly: activeOnly === "true",
+        status: status || undefined,
+      },
+      geoScope,
+    );
   }
 
   @Get()
@@ -120,9 +142,15 @@ export class DonationBoxController {
     @Query("search") search?: string,
     @Query("region") region?: string,
     @Query("city") city?: string,
+    @Query("region_id") region_id?: string,
+    @Query("city_id") city_id?: string,
+    @Query("route_id") route_id?: string,
+    @Query("assigned_user_id") assigned_user_id?: string,
     @Query("box_type") box_type?: string,
     @Query("status") status?: string,
+    @Query("frequency") frequency?: string,
     @Query("is_active") is_active?: string,
+    @Query("date") date?: string,
     @Query("start_date") start_date?: string,
     @Query("end_date") end_date?: string,
     @Res() res?: Response,
@@ -132,11 +160,13 @@ export class DonationBoxController {
       const pageNum = page ? parseInt(page) : 1;
       const pageSizeNum = pageSize ? parseInt(pageSize) : 10;
 
-      // Resolve geographic restriction
-      const assignedCityIds =
-        await this.donationBoxService.resolveUserGeographyCityIds(
-          currentUser?.id,
-        );
+      const geoScope = currentUser?.id
+        ? await this.geographicScopeService.resolveForUser(
+            currentUser.id,
+            currentUser.role,
+            currentUser,
+          )
+        : null;
 
       const result = await this.donationBoxService.findAll(
         {
@@ -147,13 +177,20 @@ export class DonationBoxController {
           search,
           region,
           city,
+          region_id,
+          city_id,
+          route_id,
+          assigned_user_id,
           box_type,
           status,
+          frequency,
           is_active: is_active ? is_active === "true" : undefined,
+          date,
           start_date,
           end_date,
         },
-        assignedCityIds,
+        geoScope,
+        currentUser,
       );
 
       return res.status(HttpStatus.OK).json({
@@ -186,14 +223,24 @@ export class DonationBoxController {
     try {
       const result = await this.donationBoxService.findActiveByRegion(region);
 
-      // Filter results by geographic access
-      const assignedCityIds =
-        await this.donationBoxService.resolveUserGeographyCityIds(
-          currentUser?.id,
-        );
-      const filteredResult = assignedCityIds
-        ? result.filter((box) => assignedCityIds.includes(box.city_id))
-        : result;
+      const geoScope = currentUser?.id
+        ? await this.geographicScopeService.resolveForUser(
+            currentUser.id,
+            currentUser.role,
+            currentUser,
+          )
+        : null;
+      const filteredResult =
+        !geoScope ||
+        !this.geographicScopeService.isGeographicFilterActive(geoScope)
+          ? result
+          : result.filter((box) =>
+              this.geographicScopeService.recordMatches(
+                geoScope,
+                "donation_boxes",
+                box,
+              ),
+            );
 
       return res.status(HttpStatus.OK).json({
         success: true,
@@ -205,6 +252,60 @@ export class DonationBoxController {
         success: false,
         message: error.message,
         data: [],
+      });
+    }
+  }
+
+  @Get(":id/audit-history")
+  @RequiredPermissions([
+    "fund_raising.donation_box.view",
+    "super_admin",
+    "fund_raising_manager",
+    "fund_raising_user",
+  ])
+  async getAuditHistory(
+    @Param("id") id: string,
+    @Res() res: Response,
+    @CurrentUser() currentUser?: any,
+  ) {
+    try {
+      const existing = await this.donationBoxService.findOne(+id);
+      const scope =
+        await this.donationBoxService.resolveDonationBoxScope(currentUser);
+      const geoScope = currentUser?.id
+        ? await this.geographicScopeService.resolveForUser(
+            currentUser.id,
+            currentUser.role,
+            currentUser,
+          )
+        : null;
+      this.donationBoxService.assertDonationBoxViewAccess(
+        scope,
+        existing,
+        geoScope,
+      );
+      const history =
+        await this.donationBoxService.getDonationBoxAuditHistory(+id);
+      return res.status(HttpStatus.OK).json({
+        success: true,
+        message: "Donation box audit history retrieved successfully",
+        data: history,
+      });
+    } catch (error) {
+      if (error instanceof ForbiddenException) {
+        return res.status(HttpStatus.FORBIDDEN).json({
+          success: false,
+          message: error.message,
+          data: null,
+        });
+      }
+      const status = error.message?.includes("not found")
+        ? HttpStatus.NOT_FOUND
+        : HttpStatus.BAD_REQUEST;
+      return res.status(status).json({
+        success: false,
+        message: error.message,
+        data: null,
       });
     }
   }
@@ -223,11 +324,20 @@ export class DonationBoxController {
   ) {
     try {
       const result = await this.donationBoxService.findOne(+id);
-
-      // Geographic access check
-      if (result.city_id) {
-        await this.checkGeographicAccess(currentUser.id, result.city_id);
-      }
+      const scope =
+        await this.donationBoxService.resolveDonationBoxScope(currentUser);
+      const geoScope = currentUser?.id
+        ? await this.geographicScopeService.resolveForUser(
+            currentUser.id,
+            currentUser.role,
+            currentUser,
+          )
+        : null;
+      this.donationBoxService.assertDonationBoxViewAccess(
+        scope,
+        result,
+        geoScope,
+      );
 
       return res.status(HttpStatus.OK).json({
         success: true,
@@ -266,15 +376,26 @@ export class DonationBoxController {
     @CurrentUser() currentUser?: any,
   ) {
     try {
-      // Check geographic access on existing box
       const existingBox = await this.donationBoxService.findOne(+id);
-      if (existingBox.city_id) {
-        await this.checkGeographicAccess(currentUser.id, existingBox.city_id);
-      }
+      const scope =
+        await this.donationBoxService.resolveDonationBoxScope(currentUser);
+      const geoScope = currentUser?.id
+        ? await this.geographicScopeService.resolveForUser(
+            currentUser.id,
+            currentUser.role,
+            currentUser,
+          )
+        : null;
+      this.donationBoxService.assertDonationBoxViewAccess(
+        scope,
+        existingBox,
+        geoScope,
+      );
 
       const result = await this.donationBoxService.update(
         +id,
         updateDonationBoxDto,
+        currentUser,
       );
       return res.status(HttpStatus.OK).json({
         success: true,
@@ -312,13 +433,23 @@ export class DonationBoxController {
     @CurrentUser() currentUser?: any,
   ) {
     try {
-      // Check geographic access
       const existingBox = await this.donationBoxService.findOne(+id);
-      if (existingBox.city_id) {
-        await this.checkGeographicAccess(currentUser.id, existingBox.city_id);
-      }
+      const scope =
+        await this.donationBoxService.resolveDonationBoxScope(currentUser);
+      const geoScope = currentUser?.id
+        ? await this.geographicScopeService.resolveForUser(
+            currentUser.id,
+            currentUser.role,
+            currentUser,
+          )
+        : null;
+      this.donationBoxService.assertDonationBoxViewAccess(
+        scope,
+        existingBox,
+        geoScope,
+      );
 
-      const result = await this.donationBoxService.remove(+id);
+      const result = await this.donationBoxService.remove(+id, currentUser);
       return res.status(HttpStatus.OK).json({
         success: true,
         message: result.message,
@@ -356,11 +487,21 @@ export class DonationBoxController {
     @CurrentUser() currentUser?: any,
   ) {
     try {
-      // Check geographic access
       const existingBox = await this.donationBoxService.findOne(+id);
-      if (existingBox.city_id) {
-        await this.checkGeographicAccess(currentUser.id, existingBox.city_id);
-      }
+      const scope =
+        await this.donationBoxService.resolveDonationBoxScope(currentUser);
+      const geoScope = currentUser?.id
+        ? await this.geographicScopeService.resolveForUser(
+            currentUser.id,
+            currentUser.role,
+            currentUser,
+          )
+        : null;
+      this.donationBoxService.assertDonationBoxViewAccess(
+        scope,
+        existingBox,
+        geoScope,
+      );
 
       const result = await this.donationBoxService.updateCollectionStats(
         +id,
@@ -403,9 +544,21 @@ export class DonationBoxController {
     try {
       const result = await this.donationBoxService.findByKeyNumber(key_number);
 
-      // Geographic access check
-      if (result && result.city_id) {
-        await this.checkGeographicAccess(currentUser.id, result.city_id);
+      if (result) {
+        const scope =
+          await this.donationBoxService.resolveDonationBoxScope(currentUser);
+        const geoScope = currentUser?.id
+          ? await this.geographicScopeService.resolveForUser(
+              currentUser.id,
+              currentUser.role,
+              currentUser,
+            )
+          : null;
+        this.donationBoxService.assertDonationBoxViewAccess(
+          scope,
+          result,
+          geoScope,
+        );
       }
 
       return res.status(HttpStatus.OK).json({

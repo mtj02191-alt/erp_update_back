@@ -47,6 +47,10 @@ export class UpdateDonationDto {
 
   @IsOptional()
   @IsString()
+  address?: string;
+
+  @IsOptional()
+  @IsString()
   project_id?: string;
 
   @IsOptional()

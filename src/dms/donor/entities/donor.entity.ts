@@ -75,6 +75,10 @@ export class Donor extends BaseEntity {
   @Column({ nullable: true })
   country: string;
 
+  /** Normalized lowercase search blob from country, city, and address. */
+  @Column({ type: "text", nullable: true, default: null })
+  geo_search: string;
+
   @Column({ nullable: true })
   postal_code: string;
 
@@ -94,27 +98,9 @@ export class Donor extends BaseEntity {
   @Column({ nullable: true })
   last_name: string;
 
-  // CSR/Corporate Donor fields
-  @Column({ nullable: true })
-  company_name: string;
-
-  @Column({ nullable: true })
-  company_registration: string;
-
-  @Column({ nullable: true })
-  contact_person: string;
-
-  @Column({ nullable: true })
-  designation: string;
-
-  @Column({ nullable: true })
-  company_address: string;
-
-  @Column({ nullable: true })
-  company_phone: string;
-
-  @Column({ nullable: true })
-  company_email: string;
+  /** Optional date of birth (individual / contact). Additive — null for legacy rows. */
+  @Column({ type: "date", nullable: true, default: null })
+  date_of_birth: Date | string | null;
 
   // Password reset fields
   @Column({ nullable: true })
@@ -139,9 +125,48 @@ export class Donor extends BaseEntity {
   @Column({ type: "boolean", default: false, nullable: true })
   recurring: boolean;
 
+  /** Donor consented to recurring charges (website / Stripe recurring checkout). */
+  @Column({ type: "boolean", default: false, nullable: true })
+  recurring_consent: boolean;
+
+  @Column({ type: "timestamp", nullable: true, default: null })
+  recurring_consent_at: Date | null;
+
   @Column({ type: "boolean", default: false, nullable: true })
   multi_time_donor: boolean;
 
   @Column({ type: "boolean", default: true, nullable: true })
   notification_subscription: boolean;
+
+  /**
+   * CRM pipeline stage. NULL = existing/legacy donors treated as "donor"
+   * (no rewrite of historical rows; additive only).
+   */
+  @Column({ type: "varchar", length: 32, nullable: true, default: null })
+  pipeline_stage: string | null;
+
+  @Column({ type: "timestamptz", nullable: true, default: null })
+  pipeline_stage_changed_at: Date | null;
+
+  @Column({ type: "int", nullable: true, default: null })
+  pipeline_stage_changed_by_id: number | null;
+
+  @ManyToOne(() => User, {
+    nullable: true,
+    eager: false,
+    onDelete: "SET NULL",
+  })
+  @JoinColumn({ name: "pipeline_stage_changed_by_id" })
+  pipeline_stage_changed_by: User | null;
+
+  /** Latest asked amount while in Ask (or last ask before later stages). */
+  @Column({ type: "decimal", precision: 14, scale: 2, nullable: true, default: null })
+  pipeline_ask_amount: number | null;
+
+  /** Latest pledged amount while in Pledge (or last pledge before later stages). */
+  @Column({ type: "decimal", precision: 14, scale: 2, nullable: true, default: null })
+  pipeline_pledge_amount: number | null;
+
+  @Column({ type: "varchar", length: 8, nullable: true, default: "PKR" })
+  pipeline_amount_currency: string | null;
 }

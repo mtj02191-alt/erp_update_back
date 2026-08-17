@@ -72,7 +72,7 @@ export class Visitor {
   @Column({ type: "text", nullable: true })
   remarks: string;
 
-  @Column({ type: "varchar", length: 50, nullable: false, default: "Pending" })
+  @Column({ type: "varchar", length: 50, nullable: false, default: "pending" })
   status: string;
 
   @Column({ type: "int", nullable: true })

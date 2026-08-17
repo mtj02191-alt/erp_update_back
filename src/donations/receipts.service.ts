@@ -19,7 +19,7 @@ export class DonationsReceiptsService {
     }
 
     const donorName =
-      donor.name || donor.company_name || donor.first_name || "Valued Donor";
+      donor.name || donor.first_name || "Valued Donor";
 
     const products =
       donation?.in_kind_items?.map((item: any) => ({

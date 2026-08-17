@@ -17,9 +17,7 @@ import {
 } from "@nestjs/common";
 import { Response } from "express";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { diskStorage } from "multer";
-import * as fs from "fs";
-import * as path from "path";
+import { memoryStorage } from "multer";
 import { TasksService } from "./tasks.service";
 import { CreateTaskDto } from "./dto/create-task.dto";
 import { UpdateTaskDto } from "./dto/update-task.dto";
@@ -27,6 +25,7 @@ import { AssignTaskDto } from "./dto/assign-task.dto";
 import { ApproveTaskDto } from "./dto/approve-task.dto";
 import { AddAttachmentDto } from "./dto/add-attachment.dto";
 import { AddCommentDto } from "./dto/add-comment.dto";
+import { CreateTaskDueReminderDto } from "./dto/create-task-due-reminder.dto";
 import { TimeEntryDto } from "./dto/time-entry.dto";
 import { UpdateTaskProgressDto } from "./dto/update-task-progress.dto";
 import { StatusTransitionDto } from "./dto/status-transition.dto";
@@ -36,11 +35,20 @@ import { PermissionsGuard } from "../permissions/guards/permissions.guard";
 import { RequiredPermissions } from "../permissions";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { User, UserRole } from "../users/user.entity";
+import { S3StorageService } from "../utils/storage/s3-storage.service";
+
+const taskAttachmentUploadOptions = {
+  storage: memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+};
 
 @Controller("tasks")
 @UseGuards(JwtGuard, PermissionsGuard)
 export class TasksController {
-  constructor(private readonly tasksService: TasksService) {}
+  constructor(
+    private readonly tasksService: TasksService,
+    private readonly s3Storage: S3StorageService,
+  ) {}
 
   @Post()
   @RequiredPermissions(["tasking.tasks.create", "tasks.create", "super_admin"])
@@ -94,9 +102,12 @@ export class TasksController {
       filters: {
         search: query.search || "",
         department: query.department || "",
+        project_name: query.project_name || "",
         status: query.status || "",
         priority: query.priority || "",
         user_name: query.user_name || "",
+        assignee_id: query.assignee_id || "",
+        view_type: query.view_type || "",
       },
       strictDepartment: query.strictDepartment === "true" || false,
     };
@@ -317,47 +328,12 @@ export class TasksController {
     "tasks.update",
     "super_admin",
   ])
-  @UseInterceptors(
-    FileInterceptor("file", {
-      storage: diskStorage({
-        destination: (req, file, cb) => {
-          const uploadRoot = path.join(process.cwd(), "uploads", "tasks");
-          fs.mkdirSync(uploadRoot, { recursive: true });
-          cb(null, uploadRoot);
-        },
-        filename: (req, file, cb) => {
-          const ext = path.extname(file.originalname);
-          const base = path.basename(file.originalname, ext);
-          const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
-          cb(null, `${base}-${unique}${ext}`);
-        },
-      }),
-      limits: {
-        fileSize: 10 * 1024 * 1024,
-      },
-      fileFilter: (req, file, cb) => {
-        const allowedMimes = [
-          "application/pdf",
-          "image/png",
-          "image/jpeg",
-          "image/jpg",
-          "application/msword",
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-          "application/vnd.ms-excel",
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "text/plain",
-        ];
-        if (!allowedMimes.includes(file.mimetype)) {
-          return cb(new BadRequestException("Unsupported file type"), false);
-        }
-        cb(null, true);
-      },
-    }),
-  )
+  @UseInterceptors(FileInterceptor("file", taskAttachmentUploadOptions))
   async uploadAttachment(
     @Param("id") id: string,
     @UploadedFile() file: Express.Multer.File,
     @Body("description") description: string,
+    @Body("name") name: string,
     @Body("is_initial") is_initial: any,
     @CurrentUser() user: User,
     @Res() res: Response,
@@ -365,14 +341,15 @@ export class TasksController {
     if (!file) {
       throw new BadRequestException("File is required");
     }
-    const relativeUrl = `/files/tasks/${file.filename}`;
+    const uploaded = await this.s3Storage.uploadTaskAttachment(file);
+    const attachmentName = String(description || name || "").trim() || undefined;
     const result = await this.tasksService.addAttachment(
       +id,
       {
         file_name: file.originalname,
-        file_url: relativeUrl,
+        file_url: uploaded.url,
         file_type: file.mimetype,
-        description: description || undefined,
+        description: attachmentName,
         is_initial: String(is_initial) === "true",
       },
       user,
@@ -417,6 +394,65 @@ export class TasksController {
     @Res() res: Response,
   ) {
     const result = await this.tasksService.addComment(+id, dto, user);
+    return res.status(HttpStatus.OK).json({ success: true, data: result });
+  }
+
+  @Get(":id/due-reminders")
+  @RequiredPermissions([
+    "tasking.tasks.view",
+    "tasks.view",
+    "tasking.tasks.update",
+    "tasks.update",
+    "super_admin",
+  ])
+  async listDueReminders(
+    @Param("id") id: string,
+    @CurrentUser() user: User,
+    @Res() res: Response,
+  ) {
+    const result = await this.tasksService.listDueReminders(+id, user);
+    return res.status(HttpStatus.OK).json({ success: true, data: result });
+  }
+
+  @Post(":id/due-reminders")
+  @RequiredPermissions([
+    "tasking.tasks.view",
+    "tasks.view",
+    "tasking.tasks.update",
+    "tasks.update",
+    "super_admin",
+  ])
+  async createDueReminder(
+    @Param("id") id: string,
+    @Body() dto: CreateTaskDueReminderDto,
+    @CurrentUser() user: User,
+    @Res() res: Response,
+  ) {
+    const result = await this.tasksService.createDueReminder(+id, dto, user);
+    return res
+      .status(HttpStatus.CREATED)
+      .json({ success: true, data: result });
+  }
+
+  @Delete(":id/due-reminders/:reminderId")
+  @RequiredPermissions([
+    "tasking.tasks.view",
+    "tasks.view",
+    "tasking.tasks.update",
+    "tasks.update",
+    "super_admin",
+  ])
+  async deleteDueReminder(
+    @Param("id") id: string,
+    @Param("reminderId") reminderId: string,
+    @CurrentUser() user: User,
+    @Res() res: Response,
+  ) {
+    const result = await this.tasksService.deleteDueReminder(
+      +id,
+      +reminderId,
+      user,
+    );
     return res.status(HttpStatus.OK).json({ success: true, data: result });
   }
 

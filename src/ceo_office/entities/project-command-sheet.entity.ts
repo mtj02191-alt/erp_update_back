@@ -54,7 +54,7 @@ export class ProjectCommandSheet {
     text: string;
     assigned_to_id?: number;
     due_date?: Date;
-    status: "pending" | "in_progress" | "completed";
+    status: "pending" | "in_progress" | "completed" | "on_hold";
     related_task_id?: number;
   }[];
 
@@ -70,7 +70,7 @@ export class ProjectCommandSheet {
   @Column({ type: "date", nullable: true })
   end_date: Date;
 
-  @Column({ type: "varchar", length: 50, nullable: true, default: "Pending" })
+  @Column({ type: "varchar", length: 50, nullable: true, default: "pending" })
   status: string;
 
   @Column({ type: "int", nullable: true })

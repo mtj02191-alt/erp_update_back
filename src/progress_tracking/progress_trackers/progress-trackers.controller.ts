@@ -16,7 +16,12 @@ import {
 import { Response, Request } from "express";
 import { JwtGuard } from "src/auth/jwt.guard";
 import { PermissionsGuard } from "src/permissions/guards/permissions.guard";
-import { RequiredPermissions } from "src/permissions";
+import {
+  DONATION_CREATE_GUARD,
+  DONATION_UPDATE_GUARD,
+  DONATION_VIEW_GUARD,
+  RequiredPermissions,
+} from "src/permissions";
 import { CurrentUser } from "src/auth/current-user.decorator";
 import { UserOrDonorJwtGuard } from "src/auth/guards/user-or-donor-jwt.guard";
 import { PermissionsService } from "src/permissions/permissions.service";
@@ -64,11 +69,7 @@ export class ProgressTrackersController {
 
   @Post()
   @UseGuards(JwtGuard, PermissionsGuard)
-  @RequiredPermissions([
-    "fund_raising.donations.create",
-    "super_admin",
-    "fund_raising_manager",
-  ])
+  @RequiredPermissions([...DONATION_CREATE_GUARD])
   async create(
     @Body() dto: CreateTrackerDto,
     @Res() res: Response,
@@ -82,12 +83,7 @@ export class ProgressTrackersController {
 
   @Get()
   @UseGuards(JwtGuard, PermissionsGuard)
-  @RequiredPermissions([
-    "fund_raising.donations.view",
-    "super_admin",
-    "fund_raising_manager",
-    "fund_raising_user",
-  ])
+  @RequiredPermissions([...DONATION_VIEW_GUARD])
   async list(
     @Query("page") page?: string,
     @Query("pageSize") pageSize?: string,
@@ -120,12 +116,7 @@ export class ProgressTrackersController {
   /** Must be registered before @Get(":id") so "by-donation" is not captured as an id. */
   @Get("by-donation/:donationId")
   @UseGuards(JwtGuard, PermissionsGuard)
-  @RequiredPermissions([
-    "fund_raising.donations.view",
-    "super_admin",
-    "fund_raising_manager",
-    "fund_raising_user",
-  ])
+  @RequiredPermissions([...DONATION_VIEW_GUARD])
   async byDonation(
     @Param("donationId") donationId: string,
     @Res() res: Response,
@@ -142,12 +133,7 @@ export class ProgressTrackersController {
 
   @Get(":id")
   @UseGuards(JwtGuard, PermissionsGuard)
-  @RequiredPermissions([
-    "fund_raising.donations.view",
-    "super_admin",
-    "fund_raising_manager",
-    "fund_raising_user",
-  ])
+  @RequiredPermissions([...DONATION_VIEW_GUARD])
   async detail(@Param("id") id: string, @Res() res: Response) {
     const data = await this.service.getTrackerDetail(+id);
     return res
@@ -157,11 +143,7 @@ export class ProgressTrackersController {
 
   @Patch(":id")
   @UseGuards(JwtGuard, PermissionsGuard)
-  @RequiredPermissions([
-    "fund_raising.donations.update",
-    "super_admin",
-    "fund_raising_manager",
-  ])
+  @RequiredPermissions([...DONATION_UPDATE_GUARD])
   async update(
     @Param("id") id: string,
     @Body() dto: UpdateTrackerDto,
@@ -176,11 +158,7 @@ export class ProgressTrackersController {
 
   @Post(":id/token")
   @UseGuards(JwtGuard, PermissionsGuard)
-  @RequiredPermissions([
-    "fund_raising.donations.update",
-    "super_admin",
-    "fund_raising_manager",
-  ])
+  @RequiredPermissions([...DONATION_UPDATE_GUARD])
   async regenToken(
     @Param("id") id: string,
     @Res() res: Response,
@@ -194,11 +172,7 @@ export class ProgressTrackersController {
 
   @Post(":id/allocate-parts")
   @UseGuards(JwtGuard, PermissionsGuard)
-  @RequiredPermissions([
-    "fund_raising.donations.update",
-    "super_admin",
-    "fund_raising_manager",
-  ])
+  @RequiredPermissions([...DONATION_UPDATE_GUARD])
   async allocateParts(
     @Param("id") id: string,
     @Body() dto: AllocateTrackerPartsDto,
@@ -228,10 +202,7 @@ export class ProgressTrackersController {
 
     if (staffUser?.id) {
       await this.assertStaffHasAnyPermission(staffUser, [
-        "fund_raising.donations.view",
-        "super_admin",
-        "fund_raising_manager",
-        "fund_raising_user",
+        ...DONATION_VIEW_GUARD,
       ]);
       const data = await this.service.listSteps(trackerId);
       return res
@@ -278,11 +249,7 @@ export class ProgressTrackersController {
 
   @Patch("steps/:stepId")
   @UseGuards(JwtGuard, PermissionsGuard)
-  @RequiredPermissions([
-    "fund_raising.donations.update",
-    "super_admin",
-    "fund_raising_manager",
-  ])
+  @RequiredPermissions([...DONATION_UPDATE_GUARD])
   async updateStep(
     @Param("stepId") stepId: string,
     @Body() dto: UpdateTrackerStepStatusDto,
@@ -297,11 +264,7 @@ export class ProgressTrackersController {
 
   @Post("steps/:stepId/evidence")
   @UseGuards(JwtGuard, PermissionsGuard)
-  @RequiredPermissions([
-    "fund_raising.donations.update",
-    "super_admin",
-    "fund_raising_manager",
-  ])
+  @RequiredPermissions([...DONATION_UPDATE_GUARD])
   async addEvidence(
     @Param("stepId") stepId: string,
     @Body() dto: AddEvidenceDto,
@@ -316,11 +279,7 @@ export class ProgressTrackersController {
 
   @Patch("evidence/:evidenceId")
   @UseGuards(JwtGuard, PermissionsGuard)
-  @RequiredPermissions([
-    "fund_raising.donations.update",
-    "super_admin",
-    "fund_raising_manager",
-  ])
+  @RequiredPermissions([...DONATION_UPDATE_GUARD])
   async updateEvidence(
     @Param("evidenceId") evidenceId: string,
     @Body() dto: Partial<AddEvidenceDto>,
@@ -335,11 +294,7 @@ export class ProgressTrackersController {
 
   @Delete("evidence/:evidenceId")
   @UseGuards(JwtGuard, PermissionsGuard)
-  @RequiredPermissions([
-    "fund_raising.donations.update",
-    "super_admin",
-    "fund_raising_manager",
-  ])
+  @RequiredPermissions([...DONATION_UPDATE_GUARD])
   async archiveEvidence(
     @Param("evidenceId") evidenceId: string,
     @Res() res: Response,

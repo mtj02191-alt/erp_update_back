@@ -12,6 +12,7 @@ import {
 } from "./progress-trackers.controller";
 import { Donation } from "src/donations/entities/donation.entity";
 import { PermissionsModule } from "src/permissions/permissions.module";
+import { AuthModule } from "src/auth/auth.module";
 import { JwtModule } from "@nestjs/jwt";
 import { ProgressNotificationsModule } from "../progress_notifications/progress-notifications.module";
 import { ProgressBatchStepEvidence } from "../progress_batches/progress_batch_step_evidence.entity";
@@ -37,6 +38,7 @@ import { ProgressBatchesModule } from "../progress_batches/progress-batches.modu
       signOptions: { expiresIn: "24h" },
     }),
     PermissionsModule,
+    AuthModule,
     ProgressNotificationsModule,
     ProgressBatchesModule,
   ],

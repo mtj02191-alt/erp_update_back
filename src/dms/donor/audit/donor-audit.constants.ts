@@ -1,0 +1,46 @@
+export const DONOR_AUDIT_PATCH_FIELDS = [
+  "donor_type",
+  "email",
+  "phone",
+  "cnic",
+  "source",
+  "address",
+  "city",
+  "country",
+  "postal_code",
+  "notes",
+  "name",
+  "first_name",
+  "last_name",
+  "date_of_birth",
+  "is_active",
+  "is_archived",
+  "recurring",
+  "recurring_consent",
+  "recurring_consent_at",
+  "multi_time_donor",
+  "notification_subscription",
+  "assigned_to_user_id",
+  "referrer_user_id",
+] as const;
+
+export const DONOR_AUDIT_SENSITIVE_FIELDS = new Set([
+  "password",
+  "password_enc",
+  "password_enc_version",
+  "password_last_revealed_at",
+  "password_reveal_count",
+  "reset_token",
+  "reset_token_expiry",
+  "total_donated",
+  "donation_count",
+  "last_donation_date",
+]);
+
+export const DONOR_AUDIT_SKIP_KEYS = new Set([
+  "updated_by",
+  "created_by",
+  "assigned_to",
+  "referred_by",
+  "donations",
+]);

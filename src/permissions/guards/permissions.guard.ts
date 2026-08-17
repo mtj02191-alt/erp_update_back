@@ -33,7 +33,6 @@ export class PermissionsGuard implements CanActivate {
       // Get the request object
       const request = context.switchToHttp().getRequest();
       const user = request.user;
-      console.log("23456753424567", user);
       // If no user is authenticated, deny access
       if (!user || !user.id) {
         this.logger.warn("No authenticated user found");
@@ -95,7 +94,6 @@ export class PermissionsGuard implements CanActivate {
 
       return true;
     } catch (error) {
-      console.log("error", error);
       if (error instanceof ForbiddenException) {
         throw error;
       }

@@ -8,6 +8,18 @@ export class TasksCronsService {
 
   constructor(private readonly tasksService: TasksService) {}
 
+  @Cron(CronExpression.EVERY_HOUR, { timeZone: "Asia/Karachi" })
+  async handleDueReminders() {
+    try {
+      const count = await this.tasksService.processDueReminders();
+      if (count > 0) {
+        this.logger.log(`Processed ${count} task due reminder(s)`);
+      }
+    } catch (error) {
+      this.logger.error(`Task due reminders failed: ${error?.message}`);
+    }
+  }
+
   @Cron(CronExpression.EVERY_DAY_AT_1AM)
   async handleOverdueEscalation() {
     try {

@@ -1,0 +1,24 @@
+Bank Alfalah APG — Credit/Debit Card (page redirection channel 1001)
+=====================================================================
+
+STEP 1 — Browser POST to {APG}/HS/HS/HS (HS_IsRedirectionRequest=0, ChannelId=1001)
+  Create-donation returns formAction + formFields; frontend postGatewayForm once.
+  Donor completes APG handshake; APG redirects to HS_ReturnURL with auth_token (GET).
+
+STEP 2 — POST to {APG}/SSO/SSO/SSO (TransactionTypeId=3)
+  NOT from checkout. API GET /donations/public/alfalah/return?donationId=&auth_token=
+  auto-posts SSO HTML → APG secure card page.
+
+STEP 3 — Payment on APG; redirect to ReturnURL with O=order id; API syncs IPN.
+
+ENV
+---
+ALFALAH_ENV=sandbox | production  (do not rely on implicit production in dev)
+APG_MERCHANT_ID, APG_STORE_ID, APG_MERCHANT_HASH, USERNAME, PASSWORD
+Production: APG_KEY1, APG_KEY2 (16 chars)
+APG_CARD_CHANNEL_ID=1001
+API_PUBLIC_BASE_URL, APG_HS_RETURN_URL and APG_RETURN_URL → {API}/donations/public/alfalah/return
+BASE_Frontend_URL → thank-you / pending only
+
+Frontend: donation_method=alfalah, donation_frequency=once only.
+Misconfigured HS_ReturnURL on www site: /thanks forwards auth_token to API return.

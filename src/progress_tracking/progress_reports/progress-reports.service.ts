@@ -61,13 +61,11 @@ export class ProgressReportsService {
       select: ["id", "name", "code"] as any,
       order: { id: "ASC" } as any,
     });
-    const templates = (children?.length ? children : [parent]).map(
-      (t: any) => ({
-        id: Number(t.id),
-        name: String(t.name || ""),
-        code: String(t.code || ""),
-      }),
-    );
+    const templates = (children?.length ? children : [parent]).map((t: any) => ({
+      id: Number(t.id),
+      name: String(t.name || ""),
+      code: String(t.code || ""),
+    }));
     const templateIds = templates.map((t) => t.id);
 
     const start = parseIsoDateOnly(params.start_date) ?? new Date("1970-01-01");
@@ -78,8 +76,7 @@ export class ProgressReportsService {
     endExclusive.setUTCHours(0, 0, 0, 0);
 
     const interval = String(params.interval || "daily").toLowerCase();
-    const truncUnit =
-      interval === "monthly" ? "month" : interval === "weekly" ? "week" : "day";
+    const truncUnit = interval === "monthly" ? "month" : interval === "weekly" ? "week" : "day";
 
     // Units: for Qurbani-like templates we treat `batch_parts_count` as units when present,
     // otherwise count the tracker as 1 unit.
@@ -94,10 +91,7 @@ export class ProgressReportsService {
       .andWhere("t.template_id IN (:...tids)", { tids: templateIds })
       .andWhere("d.is_archived = false")
       .andWhere("LOWER(d.status) = :status", { status: COMPLETED_STATUS })
-      .andWhere("d.date >= :start AND d.date < :end", {
-        start,
-        end: endExclusive,
-      })
+      .andWhere("d.date >= :start AND d.date < :end", { start, end: endExclusive })
       .groupBy("t.template_id")
       .orderBy("t.template_id", "ASC")
       .getRawMany<{ template_id: string; units: string }>();
@@ -122,10 +116,7 @@ export class ProgressReportsService {
       .andWhere("t.template_id IN (:...tids)", { tids: templateIds })
       .andWhere("d.is_archived = false")
       .andWhere("LOWER(d.status) = :status", { status: COMPLETED_STATUS })
-      .andWhere("d.date >= :start AND d.date < :end", {
-        start,
-        end: endExclusive,
-      })
+      .andWhere("d.date >= :start AND d.date < :end", { start, end: endExclusive })
       .groupBy("period_start")
       .addGroupBy("t.template_id")
       .orderBy("period_start", "ASC")
@@ -146,3 +137,4 @@ export class ProgressReportsService {
     };
   }
 }
+

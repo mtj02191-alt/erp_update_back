@@ -24,10 +24,39 @@ export class PublicCampaignsController {
     }
   }
 
-  @Get(":slug")
-  async findBySlug(@Param("slug") slug: string, @Res() res: Response) {
+  @Get(":identifier/donation-items")
+  async getDonationItems(
+    @Param("identifier") identifier: string,
+    @Res() res: Response,
+  ) {
     try {
-      const result = await this.campaignsService.getPublicBySlug(slug);
+      const result =
+        await this.campaignsService.getPublicDonationItems(identifier);
+      return res.status(HttpStatus.OK).json({
+        success: true,
+        message: "Campaign donation items retrieved",
+        data: result,
+      });
+    } catch (error) {
+      const status = error.message?.includes("not found")
+        ? HttpStatus.NOT_FOUND
+        : HttpStatus.BAD_REQUEST;
+      return res.status(status).json({
+        success: false,
+        message: error.message,
+        data: [],
+      });
+    }
+  }
+
+  @Get(":identifier")
+  async findOne(
+    @Param("identifier") identifier: string,
+    @Res() res: Response,
+  ) {
+    try {
+      const result =
+        await this.campaignsService.getPublicCampaignWithItems(identifier);
       return res.status(HttpStatus.OK).json({
         success: true,
         message: "Campaign retrieved",

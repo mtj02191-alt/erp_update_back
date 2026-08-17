@@ -36,8 +36,17 @@ export class NotificationsController {
   ) {
     try {
       const user = req?.user ?? null;
+      const body = createNotificationDto as CreateNotificationDto & {
+        user_ids?: number[];
+      };
+      const userIds = Array.isArray(body.user_ids)
+        ? body.user_ids.map(Number).filter((id) => Number.isFinite(id) && id > 0)
+        : body.user_id
+          ? [Number(body.user_id)]
+          : undefined;
       const result = await this.notificationsService.create(
         createNotificationDto,
+        userIds,
         user,
       );
       return res.status(HttpStatus.CREATED).json({
