@@ -256,7 +256,7 @@ export class TasksService {
     });
   }
 
-  private async sendAssignmentEmailsToAssignees(
+  async sendAssignmentEmailsToAssignees(
     task: Task,
     master?: Task,
   ): Promise<void> {
@@ -3647,7 +3647,8 @@ export class TasksService {
 
       return createdCount;
     } catch (e) {
-      this.logger.error(`Recurrence processing failed: ${e.message}`);
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      this.logger.error(`Recurrence processing failed: ${errorMessage}`);
       throw e;
     }
   }

@@ -30,9 +30,10 @@ export class CeoNoteApprovalService {
       approval = approvalRepository.create({ note_id: note.id });
     }
 
-    if (!approval.approval_history) {
-      approval.approval_history = [];
-    }
+    const approvalHistory = Array.isArray(approval.approval_history)
+      ? approval.approval_history
+      : [];
+    approval.approval_history = approvalHistory;
 
     const approvalEntry = {
       decision: payload.decision,
@@ -41,6 +42,18 @@ export class CeoNoteApprovalService {
       decision_by_id: currentUser?.id,
     };
     approval.approval_history.push(approvalEntry);
+
+    if (payload.decision === "approved") {
+      approval.approval_decision = "approved";
+    } else if (payload.decision === "rejected") {
+      approval.approval_decision = "rejected";
+    } else if (payload.decision === "clarification_requested") {
+      approval.approval_decision = "request_clarification";
+    } else{
+      approval.approval_decision = "pending";
+    }
+
+    approval.approval_decision_remarks = payload.remarks || approval.approval_decision_remarks || "";
     await approvalRepository.save(approval);
 
     const oldValue = { ...note };
@@ -72,7 +85,8 @@ export class CeoNoteApprovalService {
       await this.categoryService.updateCategoryRecord(manager, updatedNote, updateDto);
     } catch (err) {
       // Do not fail approval if category sync fails; log via event emitter
-      this.eventEmitter.emit('ceo_note.category_sync_failed', { noteId: updatedNote.id, error: err?.message || String(err) });
+      const errorMessage = err instanceof Error ? err.message : String(err ?? "Unknown category sync error");
+      this.eventEmitter.emit('ceo_note.category_sync_failed', { noteId: updatedNote.id, error: errorMessage });
     }
 
     const userIdsToNotify = [] as number[];

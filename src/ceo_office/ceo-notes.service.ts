@@ -628,7 +628,8 @@ export class CeoNotesService {
     currentUser: User,
   ) {
     const results = [] as Array<{ noteId: number; taskId?: number; error?: string }>;
-    return this.dataSource.transaction(async (manager) => {
+    const createdTaskIds: number[] = [];
+    const conversionResults = await this.dataSource.transaction(async (manager) => {
       for (const noteId of bulkConvertToTaskDto.note_ids) {
         try {
           const note = await manager.getRepository(CeoNote).findOne({ where: { id: noteId } });
@@ -643,6 +644,9 @@ export class CeoNotesService {
             currentUser,
           );
           results.push({ noteId, taskId: conversionResult.task.id });
+          if (conversionResult.created) {
+            createdTaskIds.push(conversionResult.task.id);
+          }
         } catch (error) {
           const msg = error instanceof Error ? error.message : String(error ?? "");
           results.push({ noteId, error: msg || "Conversion failed" });
@@ -650,6 +654,15 @@ export class CeoNotesService {
       }
       return results;
     });
+
+    for (const taskId of createdTaskIds) {
+      const task = await this.taskRepository.findOne({ where: { id: taskId } });
+      if (task) {
+        await this.tasksService.sendAssignmentEmailsToAssignees(task);
+      }
+    }
+
+    return conversionResults;
   }
 
   async convertToTask(
@@ -658,7 +671,7 @@ export class CeoNotesService {
     currentUser: User,
   ) {
     const note = await this.findOne(id);
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const result = await this.conversionService.convertToTask(
         manager,
         note,
@@ -673,8 +686,20 @@ export class CeoNotesService {
       return {
         note: await this.findOne(result.note.id),
         task: result.task,
+        created: result.created,
       };
     });
+
+    if (result.created && result.task && result.task.source === "ceo_note") {
+      const task = await this.taskRepository.findOne({
+        where: { id: result.task.id },
+      });
+      if (task && result.task.id === task.id) {
+        await this.tasksService.sendAssignmentEmailsToAssignees(task);
+      }
+    }
+
+    return result;
   }
 
   private mapPriority(priority: string): TaskPriority {

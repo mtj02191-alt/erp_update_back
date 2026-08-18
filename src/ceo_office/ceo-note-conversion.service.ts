@@ -61,6 +61,17 @@ export class CeoNoteConversionService {
       throw new BadRequestException("Note does not exist");
     }
 
+    const existingTask = note.related_task_id
+      ? await manager.getRepository(Task).findOne({
+          where: { id: note.related_task_id },
+        })
+      : await manager.getRepository(Task).findOne({
+          where: { source: "ceo_note", source_id: note.id },
+        });
+    if (existingTask) {
+      return { note, task: existingTask, created: false };
+    }
+
     const title = convertToTaskDto.task_title || note.title;
     const description = convertToTaskDto.task_description || note.details || "";
     const department =
@@ -117,7 +128,8 @@ export class CeoNoteConversionService {
     try {
       await this.categoryService.updateCategoryRecord(manager, savedNote, { status: savedNote.status });
     } catch (err) {
-      this.logger.warn(`Category sync after conversion failed for note ${savedNote.id}: ${err?.message || String(err)}`);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Category sync after conversion failed for note ${savedNote.id}: ${errorMessage}`);
     }
 
     try {
@@ -152,6 +164,6 @@ export class CeoNoteConversionService {
       this.logger.warn(`ceo_note.converted_to_task emit failed: ${eventErr?.message}`);
     }
 
-    return { note: savedNote, task: savedTask };
+    return { note: savedNote, task: savedTask, created: true };
   }
 }
