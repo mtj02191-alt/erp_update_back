@@ -148,9 +148,12 @@ export class TasksController {
   async findOne(
     @Param("id") id: string,
     @CurrentUser() user: User,
+    @Query("include_all_mov") includeAllMov: string,
     @Res() res: Response,
   ) {
-    const result = await this.tasksService.findOne(+id, user);
+    const result = await this.tasksService.findOne(+id, user, {
+      filterMov: includeAllMov !== "true",
+    });
     return res.status(HttpStatus.OK).json({ success: true, data: result });
   }
 
@@ -523,6 +526,7 @@ export class TasksController {
     "tasks.update",
     "tasking.tasks.view",
     "tasks.view",
+    "super_admin",
   ])
   async replaceProgress(
     @Param("id") id: string,

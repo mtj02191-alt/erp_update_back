@@ -181,6 +181,9 @@ export class Task {
   @Column({ type: "text", array: true, nullable: true })
   mov_items: string[];
 
+  @Column({ type: "jsonb", nullable: true })
+  mov_assignments: { mov_index: number; user_id: number | null }[];
+
   @OneToMany(() => TaskAttachment, (att) => att.task, { cascade: true })
   attachments: TaskAttachment[];
 

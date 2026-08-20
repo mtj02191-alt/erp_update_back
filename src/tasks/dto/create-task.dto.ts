@@ -104,4 +104,11 @@ export class CreateTaskDto {
     checked_by_id: number;
     checked_at: Date;
   }[];
+
+  @IsOptional()
+  @IsArray()
+  mov_assignments?: {
+    mov_index: number;
+    user_id: number | null;
+  }[];
 }

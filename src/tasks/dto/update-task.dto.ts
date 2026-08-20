@@ -102,4 +102,11 @@ export class UpdateTaskDto {
   @IsArray()
   @IsString({ each: true })
   mov_items?: string[];
+
+  @IsOptional()
+  @IsArray()
+  mov_assignments?: {
+    mov_index: number;
+    user_id: number | null;
+  }[];
 }
