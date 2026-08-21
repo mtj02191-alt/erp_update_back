@@ -20,7 +20,19 @@ export class TasksCronsService {
     }
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_1AM)
+  @Cron(CronExpression.EVERY_HOUR, { timeZone: "Asia/Karachi" })
+  async handleRecurringTaskCutoff() {
+    try {
+      const count = await this.tasksService.finalizeRecurringCutoffs();
+      if (count > 0) {
+        this.logger.log(`Finalized ${count} recurring task cutoff(s)`);
+      }
+    } catch (error) {
+      this.logger.error(`Recurring task cutoff failed: ${error?.message}`);
+    }
+  }
+
+  @Cron(CronExpression.EVERY_DAY_AT_1AM, { timeZone: "Asia/Karachi" })
   async handleOverdueEscalation() {
     try {
       const count = await this.tasksService.overdueEscalation();
@@ -30,7 +42,7 @@ export class TasksCronsService {
     }
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_2AM)
+  @Cron(CronExpression.EVERY_DAY_AT_2AM, { timeZone: "Asia/Karachi" })
   async handleRecurrence() {
     try {
       const count = await this.tasksService.processRecurrence();

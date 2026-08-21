@@ -2081,7 +2081,7 @@ export class TasksService {
     currentUser: User,
   ): Promise<Task> {
     try {
-      const task = await this.findOne(id, currentUser);
+      const task = await this.findOne(id, currentUser, { filterMov: false });
 
       if (
         task.status === TaskStatus.COMPLETED &&
@@ -2443,7 +2443,7 @@ export class TasksService {
     dto: StatusTransitionDto,
     currentUser: User,
   ): Promise<Task> {
-    const task = await this.findOne(id, currentUser);
+    const task = await this.findOne(id, currentUser, { filterMov: false });
     const perms = await this.getTaskPermissionsForUser(currentUser);
     const assignedIds = Array.isArray(task.assigned_user_ids)
       ? task.assigned_user_ids.map((v) => Number(v)).filter((v) => !isNaN(v))
@@ -2501,15 +2501,15 @@ export class TasksService {
       throw new ForbiddenException("Only authorized staff can close tasks");
     }
     const oldStatus = task.status;
-    if (
-      nextStatus === TaskStatus.COMPLETED &&
-      task.description &&
-      task.description.trim().length > 0 &&
-      task.progress < 100
-    ) {
-      throw new BadRequestException(
-        "Task cannot be marked as completed until all MOV points are completed.",
-      );
+    if (nextStatus === TaskStatus.COMPLETED && !dto.force_complete) {
+      const completion = this.getMovCompletionSummary(task);
+      if (completion.incompleteAssigneeCount > 0) {
+        throw new ConflictException({
+          code: "INCOMPLETE_MOV_CONFIRMATION_REQUIRED",
+          message: `${completion.incompleteAssigneeCount} assignees still have incomplete MOVs.`,
+          incomplete_assignee_count: completion.incompleteAssigneeCount,
+        });
+      }
     }
     const updated = await this.update(
       id,
@@ -2559,7 +2559,7 @@ export class TasksService {
     currentUser: User,
   ): Promise<Task> {
     try {
-      const task = await this.findOne(id, currentUser);
+      const task = await this.findOne(id, currentUser, { filterMov: false });
       const oldAssignedUserIds = Array.isArray(task.assigned_user_ids)
         ? [...task.assigned_user_ids]
         : [];
@@ -3302,6 +3302,14 @@ export class TasksService {
     task.progress = value;
     task.last_progress_notes = mergedNotes || payload.notes || null;
 
+    const completion = this.getMovCompletionSummary(task, mergedNotes);
+    if (completion.hasAssignedMovs && completion.allMovsCompleted) {
+      task.status = TaskStatus.COMPLETED;
+      if (task.workflow_type === TaskWorkflowType.STANDARD) {
+        task.completed_date = task.completed_date ?? new Date();
+      }
+    }
+
     // Automatically transition to IN_PROGRESS if the task is currently OPEN or DRAFT
     // and progress is being made (value > 0)
     if (
@@ -3333,6 +3341,52 @@ export class TasksService {
 
     const refreshed = await this.findOne(id, currentUser);
     return refreshed;
+  }
+
+  private getMovCompletionSummary(
+    task: Task,
+    notes = task.last_progress_notes || "",
+  ): {
+    hasAssignedMovs: boolean;
+    allMovsCompleted: boolean;
+    incompleteAssigneeCount: number;
+  } {
+    const movItems = Array.isArray(task.mov_items) ? task.mov_items : [];
+    const assignments = Array.isArray(task.mov_assignments)
+      ? task.mov_assignments.filter((item) => Number.isInteger(Number(item.mov_index)))
+      : [];
+    const checkedMatch = String(notes || "").match(/\[indices:([^\]]*)\]/);
+    const checkedIndices = new Set(
+      checkedMatch && checkedMatch[1]
+        ? checkedMatch[1].split(",").filter(Boolean).map(Number)
+        : [],
+    );
+
+    if (assignments.length === 0) {
+      const allCompleted = movItems.length === 0 || movItems.every((_item, index) => checkedIndices.has(index));
+      return {
+        hasAssignedMovs: false,
+        allMovsCompleted: allCompleted,
+        incompleteAssigneeCount: 0,
+      };
+    }
+
+    const userCompletion = new Map<number, boolean>();
+    assignments.forEach((item) => {
+      const userId = Number(item.user_id);
+      const movIndex = Number(item.mov_index);
+      const complete = checkedIndices.has(movIndex);
+      userCompletion.set(userId, (userCompletion.get(userId) ?? true) && complete);
+    });
+
+    const incompleteAssigneeCount = Array.from(userCompletion.values()).filter(
+      (complete) => !complete,
+    ).length;
+    return {
+      hasAssignedMovs: true,
+      allMovsCompleted: incompleteAssigneeCount === 0,
+      incompleteAssigneeCount,
+    };
   }
 
   private validateMovProgressAccess(
@@ -3774,6 +3828,16 @@ export class TasksService {
           reported_by_id: master.reported_by_id,
           created_by_id: master.created_by_id,
           approval_required_user_ids: master.approval_required_user_ids,
+          // Reuse the MOV definitions and assignments, but start the new
+          // recurrence with a fresh unchecked progress state.
+          mov_items: Array.isArray(master.mov_items)
+            ? [...master.mov_items]
+            : master.mov_items,
+          mov_assignments: Array.isArray(master.mov_assignments)
+            ? master.mov_assignments.map((item) => ({ ...item }))
+            : master.mov_assignments,
+          progress: 0,
+          last_progress_notes: null,
         });
 
         await this.taskRepo.save(child);
@@ -3830,6 +3894,60 @@ export class TasksService {
       this.logger.error(`Recurrence processing failed: ${errorMessage}`);
       throw e;
     }
+  }
+
+  async finalizeRecurringCutoffs(): Promise<number> {
+    const now = new Date();
+    const karachiParts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Karachi",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      hour12: false,
+    }).formatToParts(now);
+    const parts = Object.fromEntries(
+      karachiParts.map((part) => [part.type, part.value]),
+    );
+    const today = `${parts.year}-${parts.month}-${parts.day}`;
+    const cutoffHour = Number(parts.hour);
+    if (!Number.isFinite(cutoffHour) || cutoffHour < 12) return 0;
+
+    const tomorrow = new Date(`${today}T00:00:00Z`);
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    const tomorrowDate = tomorrow.toISOString().slice(0, 10);
+    const recurringTasks = await this.taskRepo.find({
+      where: { task_type: TaskType.RECURRING },
+    });
+
+    let finalized = 0;
+    for (const task of recurringTasks) {
+      const nextDate = task.recurrence_next_date
+        ? new Date(task.recurrence_next_date).toISOString().slice(0, 10)
+        : null;
+      if (nextDate !== tomorrowDate) continue;
+      if (
+        [TaskStatus.COMPLETED, TaskStatus.CLOSED, TaskStatus.CANCELLED].includes(
+          task.status,
+        )
+      ) {
+        continue;
+      }
+
+      const oldStatus = task.status;
+      task.status = TaskStatus.COMPLETED;
+      if (task.workflow_type === TaskWorkflowType.STANDARD) {
+        task.completed_date = task.completed_date ?? now;
+      }
+      const saved = await this.taskRepo.save(task);
+      await this.logActivity(saved, null, "recurrence_cutoff_finalized", {
+        from_status: oldStatus,
+        cutoff: "12:00 Asia/Karachi",
+        next_recurrence_date: nextDate,
+      });
+      finalized++;
+    }
+    return finalized;
   }
 
   private async createNotification(

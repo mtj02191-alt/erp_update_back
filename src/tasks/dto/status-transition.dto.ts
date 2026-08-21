@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString } from "class-validator";
+import { IsBoolean, IsEnum, IsOptional, IsString } from "class-validator";
 import { TaskStatus } from "../entities/task.entity";
 
 export class StatusTransitionDto {
@@ -8,4 +8,8 @@ export class StatusTransitionDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  force_complete?: boolean;
 }
