@@ -68,10 +68,18 @@ export class UserPerformanceService {
     );
     if (canList) return;
 
-    const report = await this.userRepository.findOne({
-      where: { id: targetUserId, manager_id: viewer.id },
-      select: ["id"],
-    });
+    const report = await this.userRepository
+      .createQueryBuilder("u")
+      .where("u.id = :targetUserId", { targetUserId })
+      .andWhere("u.is_archived = false")
+      .andWhere(
+        `(u.manager_id = :viewerId OR EXISTS (
+          SELECT 1 FROM user_managers um
+          WHERE um.user_id = u.id AND um.manager_id = :viewerId
+        ))`,
+        { viewerId: viewer.id },
+      )
+      .getOne();
     if (report) return;
 
     throw new ForbiddenException(
@@ -548,6 +556,7 @@ export class UserPerformanceService {
         department: profile.department,
         branch_location: locationLabel,
         manager: profile.manager,
+        managers: (profile as any).managers ?? [],
         is_active: profile.isActive,
         joining_date: profile.joining_date,
         geographic_assignments: profile.geographic_assignments,

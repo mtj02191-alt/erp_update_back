@@ -8,6 +8,7 @@ import { DonationsModule } from "../../donations/donations.module";
 import { PermissionsModule } from "src/permissions/permissions.module";
 import { ManualRecurringModule } from "../../dms/manual_recurring/manual-recurring.module";
 import { DmsTodosModule } from "../../dms/todos/dms-todos.module";
+import { DonorRelationshipModule } from "../../dms/donor_relationship/donor-relationship.module";
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { DmsTodosModule } from "../../dms/todos/dms-todos.module";
     PermissionsModule,
     ManualRecurringModule,
     DmsTodosModule,
+    DonorRelationshipModule,
   ],
   providers: [DmsCronsService],
   controllers: [DmsCronsController],

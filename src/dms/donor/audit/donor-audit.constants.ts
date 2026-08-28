@@ -1,5 +1,8 @@
 export const DONOR_AUDIT_PATCH_FIELDS = [
   "donor_type",
+  "business_type",
+  "business_type_other",
+  "area_of_interest",
   "email",
   "phone",
   "cnic",
@@ -22,6 +25,7 @@ export const DONOR_AUDIT_PATCH_FIELDS = [
   "notification_subscription",
   "assigned_to_user_id",
   "referrer_user_id",
+  "pipeline_stage",
 ] as const;
 
 export const DONOR_AUDIT_SENSITIVE_FIELDS = new Set([

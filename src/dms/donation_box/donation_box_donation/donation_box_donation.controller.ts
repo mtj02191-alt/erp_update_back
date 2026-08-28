@@ -41,13 +41,21 @@ export class DonationBoxDonationController {
       await this.donationBoxDonationService.getDonationBoxById(donationBoxId);
     if (!box) return;
 
-    await this.geographicScopeService.assertRecordAccess(
+    // Resolve with donation_box_donations so module `bypass_location` applies
+    // to collection flows (create / list-by-box), not only the main list.
+    const scope = await this.geographicScopeService.resolveForUser(
       userId,
-      "donation_boxes",
-      box,
       userRole,
       userSnapshot as any,
+      "donation_box_donations",
     );
+    if (
+      !this.geographicScopeService.recordMatches(scope, "donation_boxes", box)
+    ) {
+      throw new ForbiddenException(
+        "You do not have geographic access to this record",
+      );
+    }
   }
 
   @Post()
@@ -137,6 +145,8 @@ export class DonationBoxDonationController {
     @Query("date") date?: string,
     @Query("start_date") start_date?: string,
     @Query("end_date") end_date?: string,
+    @Query("team_filter") team_filter?: string,
+    @Query("team_filter_user_id") team_filter_user_id?: string,
     @Res() res?: Response,
     @CurrentUser() currentUser?: any,
   ) {
@@ -149,6 +159,7 @@ export class DonationBoxDonationController {
             currentUser.id,
             currentUser.role,
             currentUser,
+            "donation_box_donations",
           )
         : null;
 
@@ -169,6 +180,8 @@ export class DonationBoxDonationController {
           date,
           start_date,
           end_date,
+          team_filter,
+          team_filter_user_id,
         },
         geoScope,
         currentUser,
@@ -210,6 +223,8 @@ export class DonationBoxDonationController {
     @Query("date") date?: string,
     @Query("start_date") start_date?: string,
     @Query("end_date") end_date?: string,
+    @Query("team_filter") team_filter?: string,
+    @Query("team_filter_user_id") team_filter_user_id?: string,
     @Res() res?: Response,
     @CurrentUser() currentUser?: any,
   ) {
@@ -230,6 +245,7 @@ export class DonationBoxDonationController {
             currentUser.id,
             currentUser.role,
             currentUser,
+            "donation_box_donations",
           )
         : null;
 
@@ -248,6 +264,8 @@ export class DonationBoxDonationController {
           date,
           start_date,
           end_date,
+          team_filter,
+          team_filter_user_id,
         },
         geoScope,
         currentUser,
@@ -340,6 +358,7 @@ export class DonationBoxDonationController {
             currentUser.id,
             currentUser.role,
             currentUser,
+            "donation_box_donations",
           )
         : null;
       this.donationBoxDonationService.assertCollectionViewAccess(
@@ -399,6 +418,7 @@ export class DonationBoxDonationController {
             currentUser.id,
             currentUser.role,
             currentUser,
+            "donation_box_donations",
           )
         : null;
       this.donationBoxDonationService.assertCollectionViewAccess(
@@ -458,6 +478,7 @@ export class DonationBoxDonationController {
             currentUser.id,
             currentUser.role,
             currentUser,
+            "donation_box_donations",
           )
         : null;
       this.donationBoxDonationService.assertCollectionViewAccess(
@@ -518,6 +539,7 @@ export class DonationBoxDonationController {
             currentUser.id,
             currentUser.role,
             currentUser,
+            "donation_box_donations",
           )
         : null;
       this.donationBoxDonationService.assertCollectionViewAccess(

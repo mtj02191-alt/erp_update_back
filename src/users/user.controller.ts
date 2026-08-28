@@ -9,6 +9,7 @@ import {
   UseGuards,
   Query,
   BadRequestException,
+  Req,
 } from "@nestjs/common";
 import { UsersService } from "./users.service";
 import { UserPerformanceService } from "./user-performance.service";
@@ -90,6 +91,25 @@ export class UsersController {
       department: department || undefined,
       search: search || undefined,
     });
+  }
+
+  @Get("team-filter-options")
+  @UseGuards(JwtGuard)
+  async getTeamFilterOptions(
+    @Req() req: any,
+    @Query("search") search?: string,
+  ) {
+    const userId = req?.user?.id;
+    if (!userId) {
+      return {
+        me: null,
+        direct_reports: [],
+        entire_team: [],
+        has_direct_reports: false,
+        has_team: false,
+      };
+    }
+    return this.usersService.getTeamFilterOptions(Number(userId), search);
   }
 
   @Get("by-ids")

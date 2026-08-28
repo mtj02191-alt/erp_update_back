@@ -8,6 +8,7 @@ import { DonationPendingFollowUpService } from "../../donations/donation-pending
 import { ManualRecurringReminderService } from "../../dms/manual_recurring/manual-recurring-reminder.service";
 import { ProcessManualRecurringRemindersDto } from "../../dms/manual_recurring/dto/manual-recurring-filters.dto";
 import { DmsTodosService } from "../../dms/todos/dms-todos.service";
+import { DonorFollowupCronService } from "../../dms/donor_relationship/donor-followup-cron.service";
 
 @Injectable()
 export class DmsCronsService {
@@ -20,6 +21,7 @@ export class DmsCronsService {
     private readonly donationPendingFollowUpService: DonationPendingFollowUpService,
     private readonly manualRecurringReminderService: ManualRecurringReminderService,
     private readonly dmsTodosService: DmsTodosService,
+    private readonly donorFollowupCronService: DonorFollowupCronService,
   ) {}
 
   /**
@@ -51,13 +53,41 @@ export class DmsCronsService {
   }
 
   /**
-   * Every day 9:00 AM (Asia/Karachi).
+   * Every day 8:30 AM (Asia/Karachi).
+   * Marks overdue donor follow-ups and emails assignees a daily reminder.
+   */
+  @Cron("30 8 * * *", {
+    name: "donor-followup-reminders",
+    timeZone: "Asia/Karachi",
+  })
+  async handleDonorFollowupReminders() {
+    try {
+      const result = await this.donorFollowupCronService.processDailyFollowups();
+      if (
+        result.marked_overdue > 0 ||
+        result.reminders_sent > 0 ||
+        result.reminder_failures > 0
+      ) {
+        this.logger.log(
+          `Donor follow-ups: marked overdue ${result.marked_overdue}, reminders sent ${result.reminders_sent}, failed ${result.reminder_failures}`,
+        );
+      }
+    } catch (error: any) {
+      this.logger.error(
+        `Donor follow-up reminders cron failed: ${error?.message}`,
+        error?.stack,
+      );
+    }
+  }
+
+  /**
+   * Every day 10:00 AM (Asia/Karachi).
    * Runs due recurring-campaign automations:
    * - daily campaigns every day
    * - weekly campaigns on Saturday & Sunday (remind if no donation that week)
    * - monthly (+ bi/quarter/year) on the 2nd
    */
-  @Cron("0 9 * * *", {
+  @Cron("0 10 * * *", {
     name: "recurring-campaign-donor-reminders",
     timeZone: "Asia/Karachi",
   })
@@ -102,7 +132,7 @@ export class DmsCronsService {
 
   /**
    * Nightly cron - Runs at 2:00 AM every day (Asia/Karachi)
-   * Cleans up multiple pending donations for donors on the same day.
+   * Cleans pending/failed donations for donors who also completed that same PKT day.
    */
   @Cron("0 2 * * *", {
     name: "daily-pending-donations-cleanup",
@@ -221,13 +251,13 @@ export class DmsCronsService {
   }
 
   /**
-   * Cleans up multiple pending donations for donors on the same day.
+   * Cleans up multiple pending/failed donations for donors on the current day.
+   * Soft-archives only (is_archived = true) — never hard-deletes.
    * Logic:
-   * 1. Find all donors who have multiple donations (pending or completed) on the current day.
+   * 1. Find all donors who have multiple non-archived donations on the current day.
    * 2. For each such donor:
-   *    a. Check if they have any 'completed' donations for the current day.
-   *    b. If yes, delete ALL 'pending' donations for that donor on that day.
-   *    c. If no 'completed' donations, keep the OLDEST 'pending' donation and delete all other 'pending' donations for that donor on that day.
+   *    a. If any 'completed' → archive ALL 'pending' and 'failed' for that day.
+   *    b. If no 'completed' → keep the OLDEST 'pending', archive other 'pending'.
    */
   async cleanupPendingDonations(): Promise<{
     processedDonors: number;
@@ -238,13 +268,14 @@ export class DmsCronsService {
     this.logger.log("Starting daily pending donations cleanup...");
 
     try {
-      // 1. Find all donors who have multiple donations (pending or completed) on the current day.
+      // 1. Find all donors who have multiple donations on the current day.
       const donorsWithMultipleDonations = await this.donationRepository
         .createQueryBuilder("donation")
         .select("donation.donor_id", "donor_id")
         .addSelect("COUNT(donation.id)", "donation_count")
         .where("donation.date = CURRENT_DATE")
         .andWhere("donation.donor_id IS NOT NULL")
+        .andWhere("donation.is_archived = false")
         .groupBy("donation.donor_id")
         .having("COUNT(donation.id) > 1")
         .getRawMany();
@@ -262,6 +293,7 @@ export class DmsCronsService {
           .createQueryBuilder("donation")
           .where("donation.donor_id = :donorId", { donorId })
           .andWhere("donation.date = CURRENT_DATE")
+          .andWhere("donation.is_archived = false")
           .orderBy("donation.id", "ASC") // Order by ID to identify the 'first' pending
           .getMany();
 
@@ -271,38 +303,47 @@ export class DmsCronsService {
         const pendingDonations = allDonationsForDonor.filter(
           (d) => d.status === "pending",
         );
+        const failedDonations = allDonationsForDonor.filter(
+          (d) => d.status === "failed",
+        );
 
         if (completedDonations.length > 0) {
-          // Case 2a: Donor has completed donations, delete all pending
-          for (const pending of pendingDonations) {
-            await this.donationRepository.delete(pending.id);
+          // Case 2a: Donor has completed donation(s) → soft-archive all pending + failed
+          // (hard DELETE is blocked by DB rule prevent_delete on donations)
+          const toDelete = [...pendingDonations, ...failedDonations];
+          for (const row of toDelete) {
+            await this.donationRepository.update(row.id, {
+              is_archived: true,
+            });
             deletedDonations++;
             results.push({
               donorId,
-              donationId: pending.id,
-              action: "deleted",
-              reason: "completed donation exists",
+              donationId: row.id,
+              action: "archived",
+              reason: `completed donation exists (was ${row.status})`,
             });
             this.logger.log(
-              `Deleted pending donation #${pending.id} for donor ${donorId} (completed donation exists)`,
+              `Archived ${row.status} donation #${row.id} for donor ${donorId} (completed donation exists)`,
             );
           }
         } else if (pendingDonations.length > 1) {
-          // Case 2b: No completed donations, keep the first pending, delete others
+          // Case 2b: No completed donations, keep the first pending, archive others
           const firstPending = pendingDonations[0];
           for (let i = 1; i < pendingDonations.length; i++) {
             const pendingToDelete = pendingDonations[i];
-            await this.donationRepository.delete(pendingToDelete.id);
+            await this.donationRepository.update(pendingToDelete.id, {
+              is_archived: true,
+            });
             deletedDonations++;
             results.push({
               donorId,
               donationId: pendingToDelete.id,
-              action: "deleted",
+              action: "archived",
               reason: "multiple pending, kept first",
               keptDonationId: firstPending.id,
             });
             this.logger.log(
-              `Deleted pending donation #${pendingToDelete.id} for donor ${donorId} (kept #${firstPending.id})`,
+              `Archived pending donation #${pendingToDelete.id} for donor ${donorId} (kept #${firstPending.id})`,
             );
           }
         }
@@ -310,7 +351,7 @@ export class DmsCronsService {
 
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       this.logger.log(
-        `Daily pending donations cleanup complete in ${elapsed}s — Processed Donors: ${processedDonors}, Deleted Donations: ${deletedDonations}`,
+        `Daily pending donations cleanup complete in ${elapsed}s — Processed Donors: ${processedDonors}, Archived Donations: ${deletedDonations}`,
       );
 
       return { processedDonors, deletedDonations, results };

@@ -153,6 +153,8 @@ export class DonationBoxController {
     @Query("date") date?: string,
     @Query("start_date") start_date?: string,
     @Query("end_date") end_date?: string,
+    @Query("team_filter") team_filter?: string,
+    @Query("team_filter_user_id") team_filter_user_id?: string,
     @Res() res?: Response,
     @CurrentUser() currentUser?: any,
   ) {
@@ -188,6 +190,8 @@ export class DonationBoxController {
           date,
           start_date,
           end_date,
+          team_filter,
+          team_filter_user_id,
         },
         geoScope,
         currentUser,

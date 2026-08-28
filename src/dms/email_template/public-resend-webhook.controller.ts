@@ -15,7 +15,7 @@ import { EmailTemplateService } from "./email_template.service";
  * Public Resend webhooks — no JWT.
  * Configure in Resend dashboard:
  *   URL: https://<api-host>/email/public/resend/webhook
- *   Events: email.delivered, email.opened, email.clicked, email.bounced, email.complained
+ *   Events: email.delivered, email.opened, email.clicked, email.bounced, email.complained, email.replied
  *   Env: RESEND_WEBHOOK_SECRET=whsec_...
  */
 @Controller("email/public")

@@ -462,6 +462,7 @@ export class VisitorsService {
         checked_by_id: null,
         checked_at: null
       })) || undefined,
+      mov_assignments: convertToTaskDto.mov_assignments,
     };
 
     const task = await this.tasksService.create(createTaskDto, currentUser);

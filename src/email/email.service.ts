@@ -446,6 +446,117 @@ export class EmailService implements OnModuleInit {
     }
   }
 
+  /**
+   * Recurring payment reminder email (separate from incomplete-donation / abandon email).
+   */
+  async sendRecurringPaymentReminderEmail(
+    donation: any,
+    donorEmail?: string | null,
+  ): Promise<boolean> {
+    try {
+      const toEmail = (
+        donorEmail ||
+        donation?.donor?.email ||
+        donation?.donor_email ||
+        ""
+      )
+        .trim();
+      if (!toEmail) {
+        this.logger.error(
+          "Recurring reminder email skipped — donor email not found",
+        );
+        return false;
+      }
+
+      const fromEmail = this.configService.get<string>(
+        "RESEND_FROM_EMAIL",
+        "info@mtjfoundation.com",
+      );
+      const senderName = this.configService.get<string>(
+        "SENDER_NAME",
+        "MTJ Foundation",
+      );
+
+      if (!this.resend) {
+        this.logger.error("Resend is not configured - cannot send email");
+        return false;
+      }
+
+      const amount = donation.amount ?? donation.paid_amount ?? 0;
+      const currency = donation.currency || "PKR";
+      const donationId = donation.id;
+      const base = (
+        this.configService.get<string>("BASE_Frontend_URL") ||
+        "https://www.mtjfoundation.org"
+      ).replace(/\/$/, "");
+      const paymentLink = `${base}/checkout?donationId=${donationId}`;
+
+      const result = await this.resend.emails.send({
+        from: `${senderName} <${fromEmail}>`,
+        to: [toEmail],
+        subject: `Reminder: Your contribution of ${currency} ${amount} is due`,
+        html: this.generateRecurringPaymentReminderTemplate({
+          amount,
+          currency,
+          paymentLink,
+        }),
+        headers: {
+          "X-Mailer": "MTJ Foundation Donation System",
+          "Reply-To": fromEmail,
+        },
+      });
+
+      if (result.error) {
+        this.logger.error(
+          `Recurring payment reminder email Resend error: ${JSON.stringify(result.error)}`,
+        );
+        return false;
+      }
+
+      const messageId = result.data?.id || "unknown";
+      this.logger.log(
+        `Sent recurring payment reminder via Resend to ${toEmail} (id: ${messageId})`,
+      );
+      if (!result.data?.id) {
+        this.logger.warn(
+          `Recurring reminder Resend response missing message ID: ${JSON.stringify(result)}`,
+        );
+        return false;
+      }
+      return true;
+    } catch (error: any) {
+      this.logger.error(
+        `Recurring payment reminder email send failed: ${error?.message}`,
+      );
+      return false;
+    }
+  }
+
+  private generateRecurringPaymentReminderTemplate(params: {
+    amount: string | number;
+    currency: string;
+    paymentLink: string;
+  }): string {
+    const { amount, currency, paymentLink } = params;
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Donation Reminder</title>
+      </head>
+      <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <p>Assalam-o-Alaikum!</p>
+        <p>This is a gentle reminder that your monthly contribution of <strong>${currency} ${amount}</strong> is due.</p>
+        <p>Complete your donation here:<br/>
+        Payment Link: <a href="${paymentLink}">${paymentLink}</a></p>
+        <p>Thank you for supporting MTJ Foundation.</p>
+      </body>
+      </html>
+    `;
+  }
+
   private generateDonationSuccessTemplate(donation: any, donor: any): string {
     return `
       <!DOCTYPE html>

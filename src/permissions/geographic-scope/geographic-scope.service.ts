@@ -183,13 +183,40 @@ export class GeographicScopeService {
   }
 
   /**
+   * Module permission that skips geographic list/view filters for that entity.
+   * (Distinct from GPS `bypass_location` on the collection form — same flag also
+   * means “do not restrict this module’s lists by assigned territory”.)
+   */
+  private hasBypassLocationPermission(
+    permissions: Record<string, any>,
+    entityKey?: GeographicEntityKey,
+  ): boolean {
+    if (!entityKey || !permissions || typeof permissions !== "object") {
+      return false;
+    }
+    const moduleKey =
+      entityKey === "donation_box_donations"
+        ? "donation_box_donations"
+        : entityKey === "donation_boxes"
+          ? "donation_box"
+          : entityKey === "donors"
+            ? "donors"
+            : null;
+    if (!moduleKey) return false;
+    return permissions?.fund_raising?.[moduleKey]?.bypass_location === true;
+  }
+
+  /**
    * Resolve a fund_raising user's geographic assignments into filter vocabulary.
    * Returns bypass=true when geographic filtering must not be applied.
+   *
+   * @param entityKey When set, honors module `bypass_location` for that entity.
    */
   async resolveForUser(
     userId: number | null | undefined,
     userRole?: string,
     userSnapshot?: Partial<User> | null,
+    entityKey?: GeographicEntityKey,
   ): Promise<ResolvedGeographicScope> {
     const numericUserId = Number(userId);
     const emptyBypass = (
@@ -238,6 +265,10 @@ export class GeographicScopeService {
       permissions?.super_admin === true
     ) {
       return emptyBypass("super_admin");
+    }
+
+    if (this.hasBypassLocationPermission(permissions, entityKey)) {
+      return emptyBypass("bypass_location");
     }
 
     if (!this.hasAssignments(user)) {
@@ -637,6 +668,22 @@ export class GeographicScopeService {
     return false;
   }
 
+  private getCollectedById(record: {
+    collected_by?: { id?: number } | number | null;
+    collected_by_id?: number | null;
+  }): number | null {
+    if (record?.collected_by_id != null) {
+      const id = Number(record.collected_by_id);
+      return id > 0 ? id : null;
+    }
+    const collected = record?.collected_by;
+    if (collected == null) return null;
+    const id = typeof collected === "object" ? collected.id : collected;
+    if (id == null) return null;
+    const n = Number(id);
+    return n > 0 ? n : null;
+  }
+
   recordMatches(
     scope: ResolvedGeographicScope,
     entityKey: GeographicEntityKey,
@@ -646,10 +693,23 @@ export class GeographicScopeService {
       | DonationBoxGeoRecord
       | ({ donation_box?: DonationBoxGeoRecord | null } & {
           created_by?: { id?: number } | number | null;
+          collected_by?: { id?: number } | number | null;
+          collected_by_id?: number | null;
         }),
   ): boolean {
     if (scope.bypass) return true;
     if (this.isRecordCreatedByUser(record, scope.userId)) return true;
+    if (
+      entityKey === "donation_box_donations" &&
+      this.getCollectedById(
+        record as {
+          collected_by?: { id?: number } | number | null;
+          collected_by_id?: number | null;
+        },
+      ) === scope.userId
+    ) {
+      return true;
+    }
     if (this.isScopeEmpty(scope)) return false;
 
     switch (entityKey) {
@@ -687,7 +747,12 @@ export class GeographicScopeService {
     userRole?: string,
     userSnapshot?: Partial<User> | null,
   ): Promise<void> {
-    const scope = await this.resolveForUser(userId, userRole, userSnapshot);
+    const scope = await this.resolveForUser(
+      userId,
+      userRole,
+      userSnapshot,
+      entityKey,
+    );
     if (!this.recordMatches(scope, entityKey, record)) {
       throw new ForbiddenException(
         "You do not have geographic access to this record",
@@ -1061,6 +1126,10 @@ export class GeographicScopeService {
       new Brackets((outer) => {
         outer.orWhere(`${alias}.created_by = :${paramKey}_own`, {
           [`${paramKey}_own`]: scope.userId,
+        });
+        // Collector is co-owner (same as Access Scope assigned_to pattern).
+        outer.orWhere(`${alias}.collected_by_id = :${paramKey}_collector`, {
+          [`${paramKey}_collector`]: scope.userId,
         });
         outer.orWhere(
           new Brackets((qb) => {

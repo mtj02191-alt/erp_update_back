@@ -34,6 +34,7 @@ import { User, UserRole, Department } from "../users/user.entity";
 import { EmailService } from "../email/email.service";
 import { applyCommonFilters } from "../utils/filters/common-filter.util";
 import { PermissionsService } from "../permissions/permissions.service";
+import { DataScopeService } from "../permissions/data-scope/data-scope.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { NotificationType } from "../notifications/entities/notification.entity";
 import * as fs from "fs";
@@ -75,6 +76,7 @@ export class TasksService {
     private readonly dueReminderRepo: Repository<TaskDueReminder>,
     private readonly emailService: EmailService,
     private readonly permissionsService: PermissionsService,
+    private readonly dataScopeService: DataScopeService,
     private readonly notificationsService: NotificationsService,
   ) {}
 
@@ -543,11 +545,27 @@ export class TasksService {
     }
   }
 
-  private applyViewTypeFilter(
+  /**
+   * Assigned-to-team = tasks assigned to people in my reporting tree
+   * (managers / user_managers), not everyone in my department.
+   */
+  private async applyAssignedToTeamFilter(
+    qb: SelectQueryBuilder<Task>,
+    currentUser: User,
+    paramSuffix = "",
+  ): Promise<void> {
+    await this.dataScopeService.applyReportingTeamFilter(qb, currentUser.id, {
+      intArrayColumn: "task.assigned_user_ids",
+      jsonbUserIdsColumn: "task.assigned_users_meta",
+      paramKey: `taskTeam${paramSuffix}`,
+    });
+  }
+
+  private async applyViewTypeFilter(
     qb: SelectQueryBuilder<Task>,
     viewType: string | undefined,
     currentUser?: User,
-  ): void {
+  ): Promise<void> {
     if (!viewType || !currentUser) return;
 
     if (viewType === "created") {
@@ -573,22 +591,7 @@ export class TasksService {
     }
 
     if (viewType === "assigned_to_team") {
-      qb.andWhere(
-        new Brackets((dqb) => {
-          dqb.where(
-            "NOT (task.assigned_user_ids @> ARRAY[:currentUserId]::int[]) OR task.assigned_user_ids IS NULL",
-            { currentUserId: currentUser.id },
-          );
-          dqb.orWhere(
-            "NOT EXISTS (SELECT 1 FROM jsonb_array_elements(task.assigned_users_meta) AS assignee WHERE (assignee->>'user_id')::int = :currentUserId) OR task.assigned_users_meta IS NULL",
-            { currentUserId: currentUser.id },
-          );
-        }),
-      );
-      qb.andWhere(
-        "EXISTS (SELECT 1 FROM jsonb_array_elements(task.assigned_users_meta) AS assignee WHERE assignee->>'department' = :dept AND (assignee->>'user_id')::int != :currentUserId)",
-        { dept: currentUser.department, currentUserId: currentUser.id },
-      );
+      await this.applyAssignedToTeamFilter(qb, currentUser, "View");
       return;
     }
 
@@ -601,12 +604,9 @@ export class TasksService {
     }
 
     if (viewType === "other_tasks") {
-      // Others = assigned by me (created by current user)
       qb.andWhere("task.created_by_id = :currentUserId", {
         currentUserId: currentUser.id,
       });
-      // Exclude tasks that are only about "assigned to me" overlap if also assigned to me?
-      // Keep all created-by-me tasks; Me tab already scopes to assignees.
     }
   }
 
@@ -944,6 +944,13 @@ export class TasksService {
       delete safeFilters.assignee_id;
       delete safeFilters.assigned_user_id;
 
+      const teamFilter = this.dataScopeService.parseTeamFilter(
+        safeFilters.team_filter,
+        safeFilters.team_filter_user_id,
+      );
+      delete safeFilters.team_filter;
+      delete safeFilters.team_filter_user_id;
+
       // Declare searchTerm and userNameFilter early
       const searchTerm = safeFilters.search;
       const userNameFilter = safeFilters.user_name;
@@ -980,6 +987,36 @@ export class TasksService {
             }),
           );
         }
+      }
+
+      if (
+        teamFilter &&
+        teamFilter.mode &&
+        teamFilter.mode !== "all" &&
+        currentUser?.id
+      ) {
+        // Team filter narrows assignees within reporting tree (list UI).
+        // Access-scope ceiling is applied separately via role/visibility filters.
+        const baseScope = {
+          bypass: false,
+          type: "org" as const,
+          allowedUserIds: null as number[] | null,
+          userId: Number(currentUser.id),
+          userDepartment: currentUser.department,
+        };
+        const narrowed = await this.dataScopeService.narrowScopeWithTeamFilter(
+          baseScope,
+          teamFilter,
+        );
+        this.dataScopeService.applyUserIdsFilter(
+          qb,
+          narrowed.allowedUserIds || [],
+          {
+            intArrayColumn: "task.assigned_user_ids",
+            jsonbUserIdsColumn: "task.assigned_users_meta",
+            paramKey: "taskTeamFilter",
+          },
+        );
       }
 
       // Handle search filter - extend to include assigned user names
@@ -1036,7 +1073,7 @@ export class TasksService {
         });
       }
 
-      this.applyViewTypeFilter(qb, viewTypeFilter, currentUser);
+      await this.applyViewTypeFilter(qb, viewTypeFilter, currentUser);
 
       await this.applyDepartmentUsersFilter(qb, departmentFilter);
 
@@ -1160,36 +1197,15 @@ export class TasksService {
         );
         assignedToMeCount = await assignedToMeQb.getCount();
 
-        // Calculate assigned_to_team count (only if user is manager)
-        if (currentUser?.department) {
-          const isManager = [
-            'dept_head',
-            'manager',
-            'assistant_manager',
-            'team_lead',
-            'coordinator'
-          ].includes(String(currentUser.role || '').toLowerCase());
-          
-          if (isManager) {
-            const assignedToTeamQb = countQb.clone();
-            // Not assigned to me
-            assignedToTeamQb.andWhere(
-              new Brackets((dqb) => {
-                dqb.where("NOT (task.assigned_user_ids @> ARRAY[:currentUserId]::int[]) OR task.assigned_user_ids IS NULL", {
-                  currentUserId: currentUser.id,
-                });
-                dqb.orWhere("NOT EXISTS (SELECT 1 FROM jsonb_array_elements(task.assigned_users_meta) AS assignee WHERE (assignee->>'user_id')::int = :currentUserId) OR task.assigned_users_meta IS NULL", {
-                  currentUserId: currentUser.id,
-                });
-              }),
-            );
-            // Assigned to someone from same department and user_id != current user id
-            assignedToTeamQb.andWhere(
-              "EXISTS (SELECT 1 FROM jsonb_array_elements(task.assigned_users_meta) AS assignee WHERE assignee->>'department' = :dept AND (assignee->>'user_id')::int != :currentUserId)",
-              { dept: currentUser.department, currentUserId: currentUser.id },
-            );
-            assignedToTeamCount = await assignedToTeamQb.getCount();
-          }
+        // assigned_to_team count = reporting tree (not whole department)
+        if (currentUser?.id) {
+          const assignedToTeamQb = countQb.clone();
+          await this.applyAssignedToTeamFilter(
+            assignedToTeamQb,
+            currentUser,
+            "Count",
+          );
+          assignedToTeamCount = await assignedToTeamQb.getCount();
         }
 
         // Calculate other_tasks count (assigned by me = created by current user)
@@ -1284,23 +1300,7 @@ export class TasksService {
           }),
         );
       } else if (filters.view_type === "assigned_to_team" && currentUser) {
-        // Tasks assigned to team members (not current user) from same department
-        qb.andWhere(
-          new Brackets((dqb) => {
-            dqb.where(
-              "NOT (task.assigned_user_ids @> ARRAY[:currentUserId]::int[]) OR task.assigned_user_ids IS NULL",
-              { currentUserId: currentUser.id },
-            );
-            dqb.orWhere(
-              "NOT EXISTS (SELECT 1 FROM jsonb_array_elements(task.assigned_users_meta) AS assignee WHERE (assignee->>'user_id')::int = :currentUserId) OR task.assigned_users_meta IS NULL",
-              { currentUserId: currentUser.id },
-            );
-          }),
-        );
-        qb.andWhere(
-          "EXISTS (SELECT 1 FROM jsonb_array_elements(task.assigned_users_meta) AS assignee WHERE assignee->>'department' = :dept AND (assignee->>'user_id')::int != :currentUserId)",
-          { dept: currentUser.department, currentUserId: currentUser.id },
-        );
+        await this.applyAssignedToTeamFilter(qb, currentUser, "Dash");
       } else if (filters.view_type === "approval_tasks" && currentUser) {
         // Tasks where current user is an approver
         qb.andWhere(
@@ -1561,23 +1561,7 @@ export class TasksService {
           }),
         );
       } else if (query.view_type === "assigned_to_team" && currentUser) {
-        // Tasks assigned to team members (not current user) from same department
-        qb.andWhere(
-          new Brackets((dqb) => {
-            dqb.where(
-              "NOT (task.assigned_user_ids @> ARRAY[:currentUserId]::int[]) OR task.assigned_user_ids IS NULL",
-              { currentUserId: currentUser.id },
-            );
-            dqb.orWhere(
-              "NOT EXISTS (SELECT 1 FROM jsonb_array_elements(task.assigned_users_meta) AS assignee WHERE (assignee->>'user_id')::int = :currentUserId) OR task.assigned_users_meta IS NULL",
-              { currentUserId: currentUser.id },
-            );
-          }),
-        );
-        qb.andWhere(
-          "EXISTS (SELECT 1 FROM jsonb_array_elements(task.assigned_users_meta) AS assignee WHERE assignee->>'department' = :dept AND (assignee->>'user_id')::int != :currentUserId)",
-          { dept: currentUser.department, currentUserId: currentUser.id },
-        );
+        await this.applyAssignedToTeamFilter(qb, currentUser, "Rpt");
       } else if (query.view_type === "approval_tasks" && currentUser) {
         // Tasks where current user is an approver
         qb.andWhere(
@@ -2082,20 +2066,6 @@ export class TasksService {
   ): Promise<Task> {
     try {
       const task = await this.findOne(id, currentUser, { filterMov: false });
-
-      if (
-        task.status === TaskStatus.COMPLETED &&
-        dto.status !== TaskStatus.PENDING_APPROVAL &&
-        dto.status !== TaskStatus.CLOSED
-      ) {
-        if (
-          currentUser.role !== UserRole.SUPER_ADMIN &&
-          currentUser.role !== UserRole.ADMIN
-        ) {
-          throw new ForbiddenException("Only Admins can edit completed tasks");
-        }
-      }
-
       // If user is trying to CLOSE a COMPLETED task, allow it if they are the creator or reporter
       if (
         task.status === TaskStatus.COMPLETED &&
@@ -3520,7 +3490,7 @@ export class TasksService {
 
         const users = await this.userRepo.find({
           where: { id: In(recipientIds) },
-          select: ["id", "email"],
+          select: ["id", "email", "first_name", "last_name"],
         });
 
         const emails = [
@@ -3538,11 +3508,31 @@ export class TasksService {
           continue;
         }
 
+        const nameById = new Map(
+          users.map((u) => [
+            u.id,
+            `${u.first_name || ""} ${u.last_name || ""}`.trim() ||
+              String(u.email || "").trim() ||
+              `User #${u.id}`,
+          ]),
+        );
+        const assigneeIds = this.normalizeUserIds(
+          Array.isArray(t.assigned_user_ids) ? t.assigned_user_ids : [],
+        );
+        const assignedNames = assigneeIds
+          .map((id) => nameById.get(id))
+          .filter(Boolean);
+        const taskForEmail = {
+          ...t,
+          assigned_to_display:
+            assignedNames.length > 0 ? assignedNames.join(", ") : "Unassigned",
+        };
+
         let anySuccess = false;
         for (const email of emails) {
           const success = await this.emailService.sendTaskOverdueNotification(
             email,
-            t,
+            taskForEmail,
             escalationLevel,
           );
           if (success) anySuccess = true;

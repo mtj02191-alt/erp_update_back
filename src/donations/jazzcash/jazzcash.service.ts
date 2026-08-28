@@ -148,6 +148,7 @@ export class JazzCashService {
       pp_Password: creds.password,
       pp_ProductID: "",
       pp_SubMerchantID: "",
+      pp_SubMerchantName: creds.subMerchantName,
       pp_TxnCurrency: "PKR",
       pp_TxnDateTime,
       pp_TxnExpiryDateTime,

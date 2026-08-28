@@ -45,4 +45,8 @@ export class DonorInteraction extends BaseEntity {
 
   @Column({ type: "varchar", length: 32, default: "need_followup" })
   status: string;
+
+  /** Links automated template sends to communication_logs for webhook sync. */
+  @Column({ type: "int", nullable: true, default: null })
+  communication_log_id: number | null;
 }

@@ -1065,9 +1065,11 @@ export class RecurringDonationsLedgerService {
 
     if (donor.email) {
       try {
-        email_sent = !!(await this.emailService.sendDonationFailureEmail(
-          donation,
-        ));
+        email_sent =
+          !!(await this.emailService.sendRecurringPaymentReminderEmail(
+            donation,
+            donor.email,
+          ));
         if (!email_sent) errors.push("Payment link email failed");
       } catch (err: any) {
         errors.push(err?.message || "Payment link email failed");
@@ -1076,9 +1078,8 @@ export class RecurringDonationsLedgerService {
 
     if (donor.phone) {
       try {
-        whatsapp_sent = !!(await this.whatsAppService.sendAbandonMessage({
+        whatsapp_sent = !!(await this.whatsAppService.sendRecurringPaymentReminder({
           phoneNumber: donor.phone,
-          userName: donorName,
           amount: String(amount),
           donationId: donation.id,
         }));

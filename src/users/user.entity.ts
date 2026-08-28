@@ -6,6 +6,7 @@ import {
   ManyToOne,
   ManyToMany,
   JoinColumn,
+  JoinTable,
   UpdateDateColumn,
 } from "typeorm";
 import { PermissionsEntity } from "../permissions/entities/permissions.entity";
@@ -215,9 +216,19 @@ export class User {
   @Column({ name: "manager_id", type: "int", nullable: true })
   manager_id: number | null;
 
+  /** Legacy single manager (mirrors first of `managers`). Prefer `managers` / `manager_ids`. */
   @ManyToOne(() => User, { nullable: true, onDelete: "SET NULL" })
   @JoinColumn({ name: "manager_id" })
   manager: User;
+
+  /** Reporting managers (many). Join: user_managers(user_id, manager_id). */
+  @ManyToMany(() => User)
+  @JoinTable({
+    name: "user_managers",
+    joinColumn: { name: "user_id", referencedColumnName: "id" },
+    inverseJoinColumn: { name: "manager_id", referencedColumnName: "id" },
+  })
+  managers: User[];
 
   // One-to-One relationship with permissions
   @OneToOne(() => PermissionsEntity, (permissions) => permissions.user)

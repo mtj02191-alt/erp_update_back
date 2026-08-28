@@ -7,7 +7,7 @@ import {
   HttpStatus,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { In, Repository } from "typeorm";
 import { User, UserRole, Department } from "./user.entity";
 import { PermissionsEntity } from "../permissions/entities/permissions.entity";
 import {
@@ -29,6 +29,7 @@ import {
   encryptDonorPassword,
 } from "../utils/crypto/donor-password-vault";
 import { EmailService } from "../email/email.service";
+import { DataScopeService } from "../permissions/data-scope/data-scope.service";
 
 interface PaginationOptions {
   page: number;
@@ -54,6 +55,7 @@ export class UsersService {
     private readonly permissionsRepository: Repository<PermissionsEntity>,
     private readonly geographicAssignmentService: GeographicAssignmentService,
     private readonly emailService: EmailService,
+    private readonly dataScopeService: DataScopeService,
   ) {}
 
   pickGeographicContext(
@@ -302,17 +304,31 @@ export class UsersService {
     if (currentUser.role !== UserRole.ADMIN) {
       throw new ConflictException("Only admin can create users");
     }
+
+    const email =
+      createUserDto.email?.trim()?.toLowerCase() ||
+      `user-${Date.now()}-${Math.floor(Math.random() * 10000)}@placeholder.local`;
+
     const existingUser = await this.userRepository.findOne({
-      where: { email: createUserDto.email },
+      where: { email },
     });
     if (existingUser) {
       throw new ConflictException("Email already exists");
     }
     const plainPassword = createUserDto.password || "defaultPassword123";
     const passwordFields = await this.buildPasswordFields(plainPassword);
+
+    const { manager_ids, manager_id, ...rest } = createUserDto;
+    const managerIdList = this.normalizeManagerIds(manager_ids, manager_id);
+    const managers = await this.loadManagersByIds(managerIdList);
+
     const user = this.userRepository.create({
-      ...createUserDto,
+      ...rest,
+      email,
+      role: createUserDto.role || UserRole.USER,
       ...passwordFields,
+      manager_id: managerIdList[0] ?? null,
+      managers,
     });
     return await this.userRepository.save(user);
   }
@@ -407,10 +423,44 @@ export class UsersService {
     );
   }
 
+  /** Merge manager_ids + legacy manager_id; drop invalid / self. */
+  private normalizeManagerIds(
+    managerIds?: number[] | null,
+    managerId?: number | null,
+    excludeUserId?: number | null,
+  ): number[] {
+    const fromArray = Array.isArray(managerIds)
+      ? managerIds.map(Number).filter((n) => Number.isInteger(n) && n > 0)
+      : [];
+    const single =
+      managerId != null && Number(managerId) > 0 ? [Number(managerId)] : [];
+    const exclude = excludeUserId != null ? Number(excludeUserId) : null;
+    return Array.from(new Set([...fromArray, ...single])).filter(
+      (id) => id !== exclude,
+    );
+  }
+
+  private async loadManagersByIds(ids: number[]): Promise<User[]> {
+    if (!ids.length) return [];
+    return this.userRepository.find({
+      where: { id: In(ids), is_archived: false },
+      select: ["id", "first_name", "last_name", "email", "department", "role"],
+    });
+  }
+
+  private summarizeManagers(managers: User[] | undefined | null) {
+    return (managers || []).map((m) => ({
+      id: m.id,
+      first_name: m.first_name,
+      last_name: m.last_name,
+      email: m.email,
+    }));
+  }
+
   async findOneForView(id: number) {
     const user = await this.userRepository.findOne({
       where: { id },
-      relations: ["permissions", "manager"],
+      relations: ["permissions", "manager", "managers"],
     });
     if (!user) {
       throw new NotFoundException("User not found");
@@ -425,17 +475,21 @@ export class UsersService {
       resetToken: _resetToken,
       resetTokenExpiry: _resetTokenExpiry,
       manager,
+      managers,
       ...safeUser
     } = user;
 
-    const managerSummary = manager
-      ? {
-          id: manager.id,
-          first_name: manager.first_name,
-          last_name: manager.last_name,
-          email: manager.email,
-        }
-      : null;
+    const managersSummary = this.summarizeManagers(managers);
+    const managerSummary =
+      managersSummary[0] ||
+      (manager
+        ? {
+            id: manager.id,
+            first_name: manager.first_name,
+            last_name: manager.last_name,
+            email: manager.email,
+          }
+        : null);
 
     let geographic_assignments: Awaited<
       ReturnType<GeographicAssignmentService["resolve"]>
@@ -454,7 +508,10 @@ export class UsersService {
 
     return {
       ...safeUser,
+      manager_id: managersSummary[0]?.id ?? user.manager_id ?? null,
+      manager_ids: managersSummary.map((m) => m.id),
       manager: managerSummary,
+      managers: managersSummary,
       geographic_assignments,
     };
   }
@@ -470,11 +527,24 @@ export class UsersService {
       }
 
       // Extract user data and permissions
-      const { permissions, ...userData } = updateDto;
+      const { permissions, manager_ids, manager_id, ...userData } = updateDto;
 
       // Update user data
       const user = await this.findOne(id);
       Object.assign(user, userData);
+
+      const managersTouched =
+        manager_ids !== undefined || manager_id !== undefined;
+      if (managersTouched) {
+        const managerIdList = this.normalizeManagerIds(
+          manager_ids,
+          manager_id,
+          id,
+        );
+        user.managers = await this.loadManagersByIds(managerIdList);
+        user.manager_id = managerIdList[0] ?? null;
+      }
+
       await this.userRepository.save(user);
 
       // Update permissions if provided
@@ -510,7 +580,7 @@ export class UsersService {
       // Return updated user with permissions
       return await this.userRepository.findOne({
         where: { id },
-        relations: ["permissions"],
+        relations: ["permissions", "managers", "manager"],
       });
     } catch (error) {
       throw error;
@@ -800,5 +870,75 @@ export class UsersService {
       .where("user.id IN (:...ids)", { ids: uniqueValidIds })
       .andWhere("user.is_archived = :archived", { archived: false })
       .getMany();
+  }
+
+  private toTeamFilterUser(user: User) {
+    return {
+      id: user.id,
+      email: user.email,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      full_name:
+        `${user.first_name || ""} ${user.last_name || ""}`.trim() || user.email,
+      department: user.department,
+      role: user.role,
+      manager_id: user.manager_id,
+    };
+  }
+
+  /**
+   * Hierarchy options for list Team filters (Me / Direct / Entire / pick person).
+   */
+  async getTeamFilterOptions(currentUserId: number, search?: string) {
+    const selfId = Number(currentUserId);
+    if (!selfId) {
+      return {
+        me: null,
+        direct_reports: [],
+        entire_team: [],
+        has_direct_reports: false,
+        has_team: false,
+      };
+    }
+
+    const me = await this.userRepository.findOne({
+      where: { id: selfId, is_archived: false },
+    });
+
+    const directIds = await this.dataScopeService.getDirectReportIds(selfId);
+    const entireIds = await this.dataScopeService.getAllReportIds(selfId);
+
+    const loadByIds = async (ids: number[]) => {
+      if (!ids.length) return [];
+      const users = await this.userRepository
+        .createQueryBuilder("user")
+        .where("user.id IN (:...ids)", { ids })
+        .andWhere("user.is_archived = :archived", { archived: false })
+        .orderBy("user.first_name", "ASC")
+        .addOrderBy("user.last_name", "ASC")
+        .getMany();
+      return users.map((u) => this.toTeamFilterUser(u));
+    };
+
+    let direct_reports = await loadByIds(directIds);
+    let entire_team = await loadByIds(entireIds);
+
+    const q = (search || "").trim().toLowerCase();
+    if (q) {
+      const match = (u: {
+        full_name: string;
+        email: string;
+      }) => `${u.full_name} ${u.email}`.toLowerCase().includes(q);
+      direct_reports = direct_reports.filter(match);
+      entire_team = entire_team.filter(match);
+    }
+
+    return {
+      me: me ? this.toTeamFilterUser(me) : null,
+      direct_reports,
+      entire_team,
+      has_direct_reports: directIds.length > 0,
+      has_team: entireIds.length > 0,
+    };
   }
 }

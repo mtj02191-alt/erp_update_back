@@ -46,4 +46,7 @@ export class ConvertToTaskDto {
   @IsString({ each: true })
   @IsOptional()
   mov_items?: string[];
+
+  @IsOptional()
+  mov_assignments?: { mov_index: number; user_id: number | null }[];
 }

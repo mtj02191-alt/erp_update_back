@@ -687,11 +687,6 @@ export class ManualRecurringReminderService {
       markThanked: false,
     };
 
-    const useDefaults = this.shouldUseDonationViewDefaults(
-      params.campaign,
-      "reminder",
-    );
-
     if (
       !params.force &&
       params.pledge.last_reminder_period_key === params.reminderDedupeKey
@@ -721,30 +716,20 @@ export class ManualRecurringReminderService {
         would_send: 1,
         detail: {
           ...params.baseDetail,
-          action: useDefaults
-            ? "would_send_reminder_default"
-            : "would_send_reminder",
+          action: "would_send_reminder_default",
           channels,
         },
       };
     }
 
-    const sendResult = useDefaults
-      ? await this.sendDefaultPaymentLinkMessages({
-          pledge: params.pledge,
-          campaign: params.campaign,
-          donor: params.donor,
-          channels,
-        })
-      : await this.sendSlotMessages({
-          pledge: params.pledge,
-          campaign: params.campaign,
-          donorId: params.pledge.donor_id,
-          slot: "reminder",
-          channels,
-          periodKey: params.periodKey,
-          purposeFallbackCache: params.purposeFallbackCache,
-        });
+    // Recurring payment reminders always use the dedicated reminder email +
+    // eOcean WhatsApp template — not campaign slot templates.
+    const sendResult = await this.sendDefaultPaymentLinkMessages({
+      pledge: params.pledge,
+      campaign: params.campaign,
+      donor: params.donor,
+      channels,
+    });
 
     if (sendResult.sent > 0) {
       return {
@@ -754,7 +739,7 @@ export class ManualRecurringReminderService {
         reminders_failed: sendResult.failed > 0 ? 1 : 0,
         detail: {
           ...params.baseDetail,
-          action: useDefaults ? "reminder_sent_default" : "reminder_sent",
+          action: "reminder_sent_default",
           channels,
           error: sendResult.errors.join("; ") || undefined,
         },
@@ -822,7 +807,7 @@ export class ManualRecurringReminderService {
     return 0;
   }
 
-  /** Existing donation thanks email + Digiconn payment_confirmation WhatsApp. */
+  /** Existing donation thanks email + eOcean donation_confirmation_new WhatsApp. */
   private async sendDefaultThanksMessages(params: {
     pledge: ManualRecurringPledge;
     campaign?: Campaign | null;
@@ -892,9 +877,8 @@ export class ManualRecurringReminderService {
             sent += 1;
             continue;
           }
-          const ok = await this.whatsAppService.sendPaymentConfirmation({
+          const ok = await this.whatsAppService.sendRecurringConfirmation({
             phoneNumber: donor.phone,
-            userName: donorName,
             amount: String(amount),
           });
           if (ok) {
@@ -916,7 +900,7 @@ export class ManualRecurringReminderService {
   }
 
   /**
-   * Existing payment-link email + Digiconn abandonded_cart_payment WhatsApp.
+   * Existing payment-link email + eOcean donation_payment_reminder_new WhatsApp.
    * Reuses a pending donation for the pledge/campaign or creates one.
    */
   private async sendDefaultPaymentLinkMessages(params: {
@@ -960,7 +944,10 @@ export class ManualRecurringReminderService {
             continue;
           }
           const ok =
-            await this.emailService.sendDonationFailureEmail(donation);
+            await this.emailService.sendRecurringPaymentReminderEmail(
+              donation,
+              donor.email,
+            );
           if (ok) sent += 1;
           else {
             failed += 1;
@@ -972,9 +959,8 @@ export class ManualRecurringReminderService {
             failed += 1;
             continue;
           }
-          const ok = await this.whatsAppService.sendAbandonMessage({
+          const ok = await this.whatsAppService.sendRecurringPaymentReminder({
             phoneNumber: donor.phone,
-            userName: donorName,
             amount: String(amount),
             donationId: donation.id,
           });
@@ -1438,9 +1424,8 @@ export class ManualRecurringReminderService {
               sentOk = emailJustSent || sentOk;
             }
             if (donor?.phone && !alreadyMessaged) {
-              messageJustSent = !!(await this.whatsAppService.sendPaymentConfirmation({
+              messageJustSent = !!(await this.whatsAppService.sendRecurringConfirmation({
                 phoneNumber: donor.phone,
-                userName: donorName,
                 amount: String(amount),
               }));
               sentOk = messageJustSent || sentOk;
@@ -1474,13 +1459,14 @@ export class ManualRecurringReminderService {
             }
             if (donor?.email) {
               sentOk =
-                (await this.emailService.sendDonationFailureEmail(donation)) ||
-                sentOk;
+                (await this.emailService.sendRecurringPaymentReminderEmail(
+                  donation,
+                  donor.email,
+                )) || sentOk;
             }
             if (donor?.phone) {
-              const wa = await this.whatsAppService.sendAbandonMessage({
+              const wa = await this.whatsAppService.sendRecurringPaymentReminder({
                 phoneNumber: donor.phone,
-                userName: donorName,
                 amount: String(amount),
                 donationId: donation.id,
               });

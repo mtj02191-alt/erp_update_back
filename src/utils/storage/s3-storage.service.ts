@@ -392,6 +392,30 @@ export class S3StorageService {
     return { url: result.url, key: result.key, bucket: result.bucket };
   }
 
+  /** Website donation project page images — donations/website-donation-projects/... */
+  async uploadWebsiteDonationProjectImage(
+    file: Express.Multer.File,
+  ): Promise<{ url: string; key: string; bucket: string }> {
+    const result = await this.uploadImage(
+      S3_BUCKET_PROFILE.DONATIONS,
+      file,
+      ["website-donation-projects"],
+    );
+    return { url: result.url, key: result.key, bucket: result.bucket };
+  }
+
+  /** Home page hero slides — donations/website-home-hero/... */
+  async uploadWebsiteHomeHeroImage(
+    file: Express.Multer.File,
+  ): Promise<{ url: string; key: string; bucket: string }> {
+    const result = await this.uploadImage(
+      S3_BUCKET_PROFILE.DONATIONS,
+      file,
+      ["website-home-hero"],
+    );
+    return { url: result.url, key: result.key, bucket: result.bucket };
+  }
+
   /** Aid case/person files — donations profile, keys under donations/aid/{context}/... */
   async uploadAidAttachment(
     file: Express.Multer.File,

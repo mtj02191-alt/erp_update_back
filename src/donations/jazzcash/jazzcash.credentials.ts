@@ -5,6 +5,7 @@ export interface JazzCashCredentials {
   merchantId: string;
   password: string;
   integritySalt: string;
+  subMerchantName: string;
   mwalletUrl: string;
   statusInquiryUrl: string;
   ipnUrl: string;
@@ -16,16 +17,19 @@ export function getJazzCashEnvMode(): JazzCashEnvMode {
 }
 
 /**
- * JazzCash MWallet REST API v2.0 (2026) + Status Inquiry v2.0:
- * Sandbox and Production use the same Payment Orchestrator host.
- * Sandbox vs live is controlled by merchant credentials from
- * https://onlinepayments.jazzcash.com.pk/sandbox-frontend/
+ * JazzCash endpoints — sandbox vs production use different hosts.
+ * Override with JAZZCASH_MWALLET_URL / JAZZCASH_STATUS_INQUIRY_URL if needed.
  */
-const ORCHESTRATOR_BASE =
+const SANDBOX_ORCHESTRATOR_BASE =
   "https://onlinepayments.jazzcash.com.pk/payment-orchestrator";
 
-const DEFAULT_MWALLET_URL = `${ORCHESTRATOR_BASE}/api/v2/rest/payments/m-wallet`;
-const DEFAULT_STATUS_INQUIRY_URL = `${ORCHESTRATOR_BASE}/api/v2/rest/payments/status/inquiry`;
+const SANDBOX_MWALLET_URL = `${SANDBOX_ORCHESTRATOR_BASE}/api/v2/rest/payments/m-wallet`;
+const SANDBOX_STATUS_INQUIRY_URL = `${SANDBOX_ORCHESTRATOR_BASE}/api/v2/rest/payments/status/inquiry`;
+
+const PRODUCTION_MWALLET_URL =
+  "https://pgw.jazzcash.com.pk/api/2.0/purchase/domwallettransaction";
+const PRODUCTION_STATUS_INQUIRY_URL =
+  "https://pgw.jazzcash.com.pk/ApplicationAPI/API/PaymentInquiry/Inquire";
 
 export function resolveJazzCashCredentials(): JazzCashCredentials {
   const env = getJazzCashEnvMode();
@@ -39,6 +43,13 @@ export function resolveJazzCashCredentials(): JazzCashCredentials {
       "JazzCash credentials missing: JAZZCASH_MERCHANT_ID, JAZZCASH_PASSWORD, JAZZCASH_INTEGRITY_SALT are required",
     );
   }
+
+  const defaultMwalletUrl =
+    env === "production" ? PRODUCTION_MWALLET_URL : SANDBOX_MWALLET_URL;
+  const defaultStatusInquiryUrl =
+    env === "production"
+      ? PRODUCTION_STATUS_INQUIRY_URL
+      : SANDBOX_STATUS_INQUIRY_URL;
 
   const apiBase =
     process.env.API_PUBLIC_BASE_URL ||
@@ -54,9 +65,12 @@ export function resolveJazzCashCredentials(): JazzCashCredentials {
     merchantId,
     password,
     integritySalt,
-    mwalletUrl: process.env.JAZZCASH_MWALLET_URL || DEFAULT_MWALLET_URL,
+    subMerchantName:
+      process.env.JAZZCASH_SUB_MERCHANT_NAME ||
+      "MOLANA TARIQ JAMIL FOUNDATION",
+    mwalletUrl: process.env.JAZZCASH_MWALLET_URL || defaultMwalletUrl,
     statusInquiryUrl:
-      process.env.JAZZCASH_STATUS_INQUIRY_URL || DEFAULT_STATUS_INQUIRY_URL,
+      process.env.JAZZCASH_STATUS_INQUIRY_URL || defaultStatusInquiryUrl,
     ipnUrl,
   };
 }

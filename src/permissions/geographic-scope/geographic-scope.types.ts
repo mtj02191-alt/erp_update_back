@@ -7,6 +7,7 @@ export type GeographicEntityKey =
 export type GeographicBypassReason =
   | "not_applicable"
   | "geographic_off"
+  | "bypass_location"
   | "super_admin"
   | "no_assignments";
 

@@ -20,6 +20,23 @@ export class CreateDonorDto {
   @IsNotEmpty()
   donor_type: DonorType;
 
+  /**
+   * Optional CSR metadata (Corporate Social Responsibility donors).
+   * Stored as additive nullable columns.
+   */
+  @IsString()
+  @IsOptional()
+  business_type?: string;
+
+  /** Free-text value when `business_type` is "Other". */
+  @IsString()
+  @IsOptional()
+  business_type_other?: string;
+
+  @IsString()
+  @IsOptional()
+  area_of_interest?: string;
+
   @IsEmail()
   @IsNotEmpty()
   email: string;

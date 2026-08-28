@@ -206,6 +206,8 @@ export class DonorController {
     @Query("donated_amount") donated_amount?: string,
     @Query("donated_amount_operator") donated_amount_operator?: string,
     @Query("pipeline_stage") pipeline_stage?: string,
+    @Query("team_filter") team_filter?: string,
+    @Query("team_filter_user_id") team_filter_user_id?: string,
     @Req() req?: any,
     @Res() res?: Response,
   ) {
@@ -298,6 +300,8 @@ export class DonorController {
             DONOR_PIPELINE_STAGES.includes(pipeline_stage as any)
               ? pipeline_stage
               : undefined,
+          team_filter,
+          team_filter_user_id,
         },
         geoScope,
         sourceAccess,

@@ -48,4 +48,8 @@ export class DonorFollowup extends BaseEntity {
 
   @Column({ type: "int", nullable: true })
   completed_by_user_id: number | null;
+
+  /** Last daily reminder email sent to assignee (dedupe cron notifications). */
+  @Column({ type: "timestamptz", nullable: true, default: null })
+  last_reminder_sent_at: Date | null;
 }

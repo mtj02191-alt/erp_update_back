@@ -254,6 +254,7 @@ export class DonationsService {
   /**
    * Data scope on created_by. Skipped when geographic territory filter is active
    * (website donations have no created_by; offline rows are gated by geo instead).
+   * When a Team filter is active, always apply created_by (including online lists).
    */
   private applyDonationListDataScope(
     query: SelectQueryBuilder<Donation>,
@@ -261,17 +262,27 @@ export class DonationsService {
     listMode: "online" | "offline" | "both",
     geoScope?: ResolvedGeographicScope | null,
     paramSuffix = "",
+    teamFilterActive = false,
   ): void {
     if (!scope) return;
-    if (scope.bypass || scope.type === "org" || !scope.allowedUserIds?.length) {
+    if (scope.bypass || scope.type === "org" || scope.allowedUserIds == null) {
       return;
     }
 
-    if (geoScope && this.geographicScopeService.isGeographicFilterActive(geoScope)) {
+    if (
+      !teamFilterActive &&
+      geoScope &&
+      this.geographicScopeService.isGeographicFilterActive(geoScope)
+    ) {
       return;
     }
 
-    if (listMode === "online") {
+    if (listMode === "online" && !teamFilterActive) {
+      return;
+    }
+
+    if (listMode === "online" && teamFilterActive) {
+      this.dataScopeService.applyToQuery(query, "donation", scope);
       return;
     }
 
@@ -280,7 +291,19 @@ export class DonationsService {
       return;
     }
 
+    if (!scope.allowedUserIds.length) {
+      query.andWhere("1 = 0");
+      return;
+    }
+
     const paramKey = `dataScopeMixed${paramSuffix}`;
+    if (teamFilterActive) {
+      query.andWhere(`donation.created_by IN (:...${paramKey}_userIds)`, {
+        [`${paramKey}_userIds`]: scope.allowedUserIds,
+      });
+      return;
+    }
+
     query.andWhere(
       new Brackets((qb) => {
         qb.where(`donation.donation_source = :${paramKey}_website`, {
@@ -964,6 +987,32 @@ export class DonationsService {
     } catch (err: any) {
       this.logger.error(
         `sendDonationThanksOnce failed for ${donationId}: ${err?.message || err}`,
+      );
+    }
+
+    await this.advanceDonorPipelineIfDonationCompleted(donationId);
+  }
+
+  private async advanceDonorPipelineIfDonationCompleted(
+    donationId: number,
+  ): Promise<void> {
+    try {
+      const donation = await this.donationRepository.findOne({
+        where: { id: donationId },
+      });
+      if (!donation?.donor_id) return;
+      if (!this.isSuccessfulDonationStatus(donation.status)) return;
+      await this.donorService.advancePipelineOnDonationCompleted(
+        donation.donor_id,
+        {
+          donationId: donation.id,
+          amount: Number(donation.paid_amount ?? donation.amount ?? 0),
+          currency: donation.currency,
+        },
+      );
+    } catch (err: any) {
+      this.logger.error(
+        `advanceDonorPipelineIfDonationCompleted failed for ${donationId}: ${err?.message || err}`,
       );
     }
   }
@@ -2887,6 +2936,9 @@ export class DonationsService {
           `💾 Donation saved with donor_id: ${donorId || "null"} (Donation ID: ${savedDonation.id})`,
         );
         await this.syncDonorLastDonationDate(savedDonation);
+        if (this.isSuccessfulDonationStatus(savedDonation.status)) {
+          await this.advanceDonorPipelineIfDonationCompleted(savedDonation.id);
+        }
 
         // Prepaid campaign pledge (manual_recurring_pledges) — optional
         if (manualRecurringIntent && donorId) {
@@ -2979,6 +3031,9 @@ export class DonationsService {
           }
           donor = (savedDonation as any).donor ?? donor;
           donorId = (savedDonation as any).donor_id ?? donorId;
+          if (this.isSuccessfulDonationStatus(savedDonation.status)) {
+            await this.advanceDonorPipelineIfDonationCompleted(savedDonation.id);
+          }
         }
       }
       if (
@@ -3224,11 +3279,31 @@ export class DonationsService {
         donationSourceNot as string | null | undefined,
       );
 
+      const teamFilter = this.dataScopeService.parseTeamFilter(
+        (filters as any)?.team_filter,
+        (filters as any)?.team_filter_user_id,
+      );
+      if ((filters as any)?.team_filter !== undefined) {
+        delete (filters as any).team_filter;
+      }
+      if ((filters as any)?.team_filter_user_id !== undefined) {
+        delete (filters as any).team_filter_user_id;
+      }
+      const teamFilterActive = !!(teamFilter && teamFilter.mode && teamFilter.mode !== "all");
+      let effectiveDataScope = dataScope;
+      if (dataScope && teamFilterActive) {
+        effectiveDataScope = await this.dataScopeService.narrowScopeWithTeamFilter(
+          dataScope,
+          teamFilter,
+        );
+      }
+
       // One tracker max per donation — a plain join multiplies rows and breaks
       // OFFSET/LIMIT so the first page looks like a random set of IDs.
       const query = this.donationRepository
         .createQueryBuilder("donation")
         .leftJoin("donation.donor", "donor")
+        .where("donation.is_archived = false")
         .leftJoinAndMapOne(
           "donation.progress_tracker",
           ProgressTracker,
@@ -3344,9 +3419,11 @@ export class DonationsService {
 
       this.applyDonationListDataScope(
         query,
-        dataScope,
+        effectiveDataScope,
         donationListMode,
         geoScope,
+        "",
+        teamFilterActive,
       );
 
       const allowedSortFields = new Set([
@@ -3475,10 +3552,11 @@ export class DonationsService {
       }
       this.applyDonationListDataScope(
         sumQuery,
-        dataScope,
+        effectiveDataScope,
         donationListMode,
         geoScope,
         "Sum",
+        teamFilterActive,
       );
       this.logFinalQuery("sum", sumQuery);
       const sumResult = await sumQuery.getRawOne();
@@ -3682,6 +3760,14 @@ export class DonationsService {
           changes: auditChanges,
           performedByUserId: auditUserId,
         });
+      }
+      const nextStatus =
+        patch.status !== undefined ? String(patch.status) : donation.status;
+      if (
+        this.isSuccessfulDonationStatus(nextStatus) &&
+        !this.isSuccessfulDonationStatus(donation.status)
+      ) {
+        await this.advanceDonorPipelineIfDonationCompleted(id);
       }
       return await this.findOne(id);
     } catch (error) {

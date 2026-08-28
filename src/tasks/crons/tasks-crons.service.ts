@@ -16,7 +16,9 @@ export class TasksCronsService {
         this.logger.log(`Processed ${count} task due reminder(s)`);
       }
     } catch (error) {
-      this.logger.error(`Task due reminders failed: ${error?.message}`);
+      this.logger.error(
+        `Task due reminders failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -28,7 +30,9 @@ export class TasksCronsService {
         this.logger.log(`Finalized ${count} recurring task cutoff(s)`);
       }
     } catch (error) {
-      this.logger.error(`Recurring task cutoff failed: ${error?.message}`);
+      this.logger.error(
+        `Recurring task cutoff failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -38,7 +42,9 @@ export class TasksCronsService {
       const count = await this.tasksService.overdueEscalation();
       this.logger.log(`Overdue escalation processed for ${count} tasks`);
     } catch (error) {
-      this.logger.error(`Overdue escalation failed: ${error?.message}`);
+      this.logger.error(
+        `Overdue escalation failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -50,7 +56,9 @@ export class TasksCronsService {
         this.logger.log(`Recurrence processed: ${count} new tasks created`);
       }
     } catch (error) {
-      this.logger.error(`Recurrence processing failed: ${error?.message}`);
+      this.logger.error(
+        `Recurrence processing failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 }

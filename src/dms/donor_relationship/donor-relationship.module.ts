@@ -8,10 +8,15 @@ import { DonorFollowup } from "./entities/donor-followup.entity";
 import { Donor } from "../donor/entities/donor.entity";
 import { User } from "../../users/user.entity";
 import { PermissionsModule } from "../../permissions/permissions.module";
+import { EmailModule } from "../../email/email.module";
+import { ConfigModule } from "@nestjs/config";
+import { DonorFollowupCronService } from "./donor-followup-cron.service";
 
 @Module({
   imports: [
     PermissionsModule,
+    EmailModule,
+    ConfigModule,
     TypeOrmModule.forFeature([
       DonorInteraction,
       DonorFollowup,
@@ -24,7 +29,7 @@ import { PermissionsModule } from "../../permissions/permissions.module";
     }),
   ],
   controllers: [DonorRelationshipController],
-  providers: [DonorRelationshipService],
-  exports: [DonorRelationshipService],
+  providers: [DonorRelationshipService, DonorFollowupCronService],
+  exports: [DonorRelationshipService, DonorFollowupCronService],
 })
 export class DonorRelationshipModule {}

@@ -11,6 +11,23 @@ export function renderTemplateText(
   });
 }
 
+/** Plain-text templates become HTML so line breaks show in the inbox. */
+export function ensureEmailHtml(body: string): string {
+  if (!body) return "";
+  if (/<[a-z][\s\S]*>/i.test(body)) return body;
+  return body
+    .split(/\n{2,}/)
+    .map((paragraph) => {
+      const safe = paragraph
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\n/g, "<br>");
+      return `<p>${safe}</p>`;
+    })
+    .join("");
+}
+
 export function appendCtaToBody(
   body: string,
   ctaButtonText?: string | null,

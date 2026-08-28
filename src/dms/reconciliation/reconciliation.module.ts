@@ -9,11 +9,13 @@ import { ReconciliationS3Service } from "./reconciliation-s3.service";
 import { Donor } from "../donor/entities/donor.entity";
 import { Donation } from "../../donations/entities/donation.entity";
 import { PermissionsModule } from "../../permissions/permissions.module";
+import { DonorModule } from "../donor/donor.module";
 
 @Module({
   imports: [
     ConfigModule,
     PermissionsModule,
+    DonorModule,
     TypeOrmModule.forFeature([Reconciliation, Donor, Donation]),
     JwtModule.register({
       secret: process.env.JWT_SECRET || "your-secret-key",

@@ -47,6 +47,8 @@ interface PaginationOptions {
   date?: string;
   start_date?: string;
   end_date?: string;
+  team_filter?: string;
+  team_filter_user_id?: string | number;
 }
 
 const DONATION_BOX_SORT_FIELDS = new Set([
@@ -749,6 +751,8 @@ export class DonationBoxService {
         date = "",
         start_date,
         end_date,
+        team_filter,
+        team_filter_user_id,
       } = options;
 
       const skip = (page - 1) * pageSize;
@@ -849,7 +853,15 @@ export class DonationBoxService {
       }
 
       if (currentUser?.id) {
-        const scope = await this.resolveDonationBoxScope(currentUser);
+        const scope = await this.dataScopeService.resolveListScope({
+          userId: currentUser.id,
+          userRole: currentUser.role,
+          userDepartment: currentUser.department,
+          permissionDepartment: "fund_raising",
+          module: "donation_box",
+          teamFilter: team_filter,
+          teamFilterUserId: team_filter_user_id,
+        });
         this.applyDonationBoxListDataScope(query, scope, geoScope);
       }
 

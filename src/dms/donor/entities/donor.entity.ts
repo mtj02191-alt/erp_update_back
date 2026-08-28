@@ -37,6 +37,19 @@ export class Donor extends BaseEntity {
   })
   donor_type: DonorType;
 
+  /**
+   * Optional CSR metadata: selected business sector + optional free-text for "Other".
+   * Additive, so legacy donors are unaffected (nullable).
+   */
+  @Column({ nullable: true })
+  business_type: string;
+
+  @Column({ nullable: true })
+  business_type_other: string;
+
+  @Column({ nullable: true })
+  area_of_interest: string;
+
   @Column({ unique: true })
   email: string;
 

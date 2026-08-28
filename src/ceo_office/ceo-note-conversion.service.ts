@@ -100,6 +100,9 @@ export class CeoNoteConversionService {
       mov_items: Array.isArray(convertToTaskDto.mov_items)
         ? convertToTaskDto.mov_items.filter((item) => !!item)
         : null,
+      mov_assignments: Array.isArray(convertToTaskDto.mov_assignments)
+        ? convertToTaskDto.mov_assignments
+        : null,
       created_by_id: currentUser?.id || null,
       source: "ceo_note",
       source_id: note.id,

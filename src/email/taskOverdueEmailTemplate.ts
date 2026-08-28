@@ -1,16 +1,36 @@
+const formatUserName = (user: any): string | null => {
+  if (!user || typeof user !== "object") return null;
+  const named = String(user.name || "").trim();
+  if (named) return named;
+  const fromParts = `${user.first_name || ""} ${user.last_name || ""}`.trim();
+  if (fromParts) return fromParts;
+  const email = String(user.email || "").trim();
+  return email || null;
+};
+
+const formatAssignees = (task: any): string => {
+  if (typeof task?.assigned_to_display === "string" && task.assigned_to_display.trim()) {
+    return task.assigned_to_display.trim();
+  }
+
+  const fromMeta = Array.isArray(task?.assigned_users_meta)
+    ? task.assigned_users_meta.map(formatUserName).filter(Boolean)
+    : [];
+  if (fromMeta.length > 0) return fromMeta.join(", ");
+
+  const fromUsers = Array.isArray(task?.assigned_users)
+    ? task.assigned_users.map(formatUserName).filter(Boolean)
+    : [];
+  if (fromUsers.length > 0) return fromUsers.join(", ");
+
+  return "Unassigned";
+};
+
 export const generateTaskOverdueTemplate = (
   task: any,
   escalationLevel: number,
 ): string => {
-  const assignees =
-    (Array.isArray(task.assigned_users_meta) &&
-      task.assigned_users_meta
-        .map((m: any) => (m && m.user_id != null ? String(m.user_id) : null))
-        .filter((v: string | null) => v !== null)
-        .join(", ")) ||
-    (Array.isArray(task.assigned_user_ids) &&
-      task.assigned_user_ids.map((id) => String(id)).join(", ")) ||
-    "Unassigned";
+  const assignees = formatAssignees(task);
 
   return `
       <!DOCTYPE html>

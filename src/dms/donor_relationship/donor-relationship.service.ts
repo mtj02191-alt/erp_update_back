@@ -296,9 +296,14 @@ export class DonorRelationshipService {
     if (bucket === "completed") {
       qb.andWhere("followup.status = :status", { status: "completed" });
     } else if (bucket === "overdue") {
-      qb.andWhere("followup.status IN (:...open)", {
-        open: ["pending", "rescheduled"],
-      }).andWhere("followup.due_datetime < :startOfToday", { startOfToday });
+      qb.andWhere(
+        "(followup.status = :overdueStatus OR (followup.status IN (:...open) AND followup.due_datetime < :startOfToday))",
+        {
+          overdueStatus: "overdue",
+          open: ["pending", "rescheduled"],
+          startOfToday,
+        },
+      );
     } else if (bucket === "upcoming") {
       qb.andWhere("followup.status IN (:...open)", {
         open: ["pending", "rescheduled"],

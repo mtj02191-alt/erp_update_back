@@ -5,7 +5,11 @@ import axios from "axios";
 @Injectable()
 export class WhatsAppService implements OnModuleInit {
   private readonly logger = new Logger(WhatsAppService.name);
+  /** One-time / normal donations (existing Digiconn templates). */
   private readonly apiUrl = "https://api.digiconn.co/v1/api/outgoing/message";
+  /** Recurring reminder / abandon / confirmation (eOcean v2 templates). */
+  private readonly v2ApiUrl =
+    "https://eoceandigitalconnect.com/v2/api/outgoing/message";
   private token?: string;
 
   constructor(private configService: ConfigService) {
@@ -228,6 +232,45 @@ export class WhatsAppService implements OnModuleInit {
   }
 
   /**
+   * Recurring thanks / confirmation — template donation_confirmation_new ({{1}} = amount).
+   */
+  async sendRecurringConfirmation(data: {
+    phoneNumber: string;
+    amount: string | number;
+  }): Promise<boolean> {
+    const amountString =
+      typeof data.amount === "number" ? data.amount.toString() : data.amount;
+    return this.sendV2Template(
+      data.phoneNumber,
+      "donation_confirmation_new",
+      [amountString],
+      `Recurring confirmation WhatsApp queued for ${data.phoneNumber} (Amount: ${amountString})`,
+    );
+  }
+
+  /**
+   * Recurring reminder / abandon — template donation_payment_reminder_new
+   * ({{1}} = amount, {{2}} = checkout link).
+   */
+  async sendRecurringPaymentReminder(data: {
+    phoneNumber: string;
+    amount: string | number;
+    donationId: string | number;
+    donationUrl?: string;
+  }): Promise<boolean> {
+    const amountString =
+      typeof data.amount === "number" ? data.amount.toString() : data.amount;
+    const donationUrl =
+      data.donationUrl || this.buildDonationCheckoutUrl(data.donationId);
+    return this.sendV2Template(
+      data.phoneNumber,
+      "donation_payment_reminder_new",
+      [amountString, donationUrl],
+      `Recurring payment reminder WhatsApp queued for ${data.phoneNumber} (Amount: ${amountString}, URL: ${donationUrl})`,
+    );
+  }
+
+  /**
    * Send a plain-text WhatsApp session message (best-effort).
    */
   async sendTextMessage(data: {
@@ -265,6 +308,76 @@ export class WhatsAppService implements OnModuleInit {
       if (error?.response) {
         this.logger.error(
           `WhatsApp API error: ${JSON.stringify(error.response.data)}`,
+        );
+      }
+      return false;
+    }
+  }
+
+  private buildDonationCheckoutUrl(donationId: string | number): string {
+    const base = (
+      this.configService.get<string>("BASE_Frontend_URL") ||
+      "https://mtjfoundation.org"
+    ).replace(/\/$/, "");
+    return `${base}/checkout?donationId=${donationId}`;
+  }
+
+  private async sendV2Template(
+    phoneNumber: string,
+    templateName: string,
+    bodyTexts: string[],
+    successLog: string,
+  ): Promise<boolean> {
+    try {
+      if (!this.token) {
+        this.logger.error(
+          "WhatsApp API token not configured - cannot send message",
+        );
+        return false;
+      }
+
+      const formattedPhone = this.formatPhoneNumber(phoneNumber);
+      const payload = {
+        phone_number: formattedPhone,
+        type: "template",
+        parameters: {
+          name: templateName,
+          language: { code: "en" },
+          components: [
+            {
+              type: "body",
+              parameters: bodyTexts.map((text) => ({ type: "text", text })),
+            },
+          ],
+        },
+      };
+
+      const response = await axios.post(this.v2ApiUrl, payload, {
+        headers: {
+          token: this.token,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (response.data?.success === false) {
+        this.logger.error(
+          `WhatsApp v2 template ${templateName} rejected: ${JSON.stringify(response.data)}`,
+        );
+        return false;
+      }
+
+      this.logger.log(successLog.replace(phoneNumber, formattedPhone));
+      this.logger.debug(
+        `WhatsApp v2 API Response: ${JSON.stringify(response.data)}`,
+      );
+      return true;
+    } catch (error: any) {
+      this.logger.error(
+        `WhatsApp v2 template ${templateName} send failed: ${error?.message}`,
+      );
+      if (error?.response) {
+        this.logger.error(
+          `WhatsApp v2 API error: ${JSON.stringify(error.response.data)}`,
         );
       }
       return false;

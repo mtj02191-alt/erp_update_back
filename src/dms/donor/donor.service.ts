@@ -255,6 +255,9 @@ export class DonorService {
   private donorAuditSnapshot(donor: Donor): Record<string, unknown> {
     return {
       donor_type: donor.donor_type,
+      business_type: donor.business_type,
+      business_type_other: donor.business_type_other,
+      area_of_interest: donor.area_of_interest,
       email: donor.email,
       phone: donor.phone,
       cnic: donor.cnic,
@@ -688,7 +691,15 @@ export class DonorService {
       }
 
       if (currentUser?.id) {
-        const scope = await this.resolveDonorScope(currentUser);
+        const scope = await this.dataScopeService.resolveListScope({
+          userId: currentUser.id,
+          userRole: currentUser.role,
+          userDepartment: currentUser.department,
+          permissionDepartment: "fund_raising",
+          module: "donors",
+          teamFilter: options?.team_filter,
+          teamFilterUserId: options?.team_filter_user_id,
+        });
         this.applyDonorListDataScope(queryBuilder, scope, geoScope);
       }
 
@@ -1246,6 +1257,106 @@ export class DonorService {
       donor: refreshed,
       history_entry: history,
     };
+  }
+
+  /**
+   * Move pre-donor pipeline stages to "donor" after a completed donation.
+   * No-op for already-donor / major_donor / stewardship, and for NULL
+   * (legacy rows already treated as donor).
+   */
+  async advancePipelineOnDonationCompleted(
+    donorId: number,
+    opts?: {
+      donationId?: number;
+      amount?: number | null;
+      currency?: string | null;
+    },
+  ): Promise<void> {
+    if (!donorId || Number(donorId) <= 0) return;
+
+    try {
+      const donor = await this.donorRepository.findOne({
+        where: { id: donorId, is_archived: false },
+      });
+      if (!donor) return;
+
+      const storedStage = donor.pipeline_stage
+        ? String(donor.pipeline_stage)
+        : null;
+      const preDonorStages = new Set<string>([
+        DonorPipelineStage.LEAD,
+        DonorPipelineStage.PROSPECT,
+        DonorPipelineStage.CULTIVATION,
+        DonorPipelineStage.ASK,
+        DonorPipelineStage.PLEDGE,
+        DonorPipelineStage.LAPSED_DONOR,
+      ]);
+      if (!storedStage || !preDonorStages.has(storedStage)) {
+        return;
+      }
+
+      const fromStage = resolveDonorPipelineStage(storedStage);
+      const toStage = DonorPipelineStage.DONOR;
+      if (fromStage === toStage) return;
+
+      const amountNum =
+        opts?.amount != null && Number.isFinite(Number(opts.amount))
+          ? Number(opts.amount)
+          : null;
+      const currency = String(opts?.currency || donor.pipeline_amount_currency || "PKR")
+        .trim()
+        .toUpperCase()
+        .slice(0, 8) || "PKR";
+      const reason = opts?.donationId
+        ? `Donation completed (#${opts.donationId})`
+        : "Donation completed";
+
+      const before = this.donorAuditSnapshot(donor);
+      donor.pipeline_stage = toStage;
+      donor.pipeline_stage_changed_at = new Date();
+      donor.pipeline_stage_changed_by_id = null;
+      await this.donorRepository.save(donor);
+
+      const auditChanges = buildDonorFieldChanges(before, {
+        pipeline_stage: toStage,
+      });
+      if (auditChanges.length > 0) {
+        await this.donorAuditService.log({
+          donorId,
+          action: DonorAuditAction.UPDATED,
+          source: DonorAuditSource.SYSTEM,
+          changes: auditChanges,
+          performedByUserId: null,
+          metadata: {
+            pipeline_reason: reason,
+            transition_type: "advanced",
+            donation_id: opts?.donationId ?? null,
+            amount: amountNum,
+            currency,
+          },
+        });
+      }
+
+      await this.pipelineHistoryRepository.save(
+        this.pipelineHistoryRepository.create({
+          donor_id: donorId,
+          from_stage: fromStage,
+          to_stage: toStage,
+          reason,
+          transition_type: "advanced",
+          amount:
+            amountNum != null && amountNum > 0 ? (amountNum as any) : null,
+          currency:
+            amountNum != null && amountNum > 0 ? currency : null,
+          changed_by_id: null,
+        }),
+      );
+    } catch (error) {
+      console.error(
+        `Failed to advance pipeline on donation completed for donor ${donorId}:`,
+        error,
+      );
+    }
   }
 
   /**

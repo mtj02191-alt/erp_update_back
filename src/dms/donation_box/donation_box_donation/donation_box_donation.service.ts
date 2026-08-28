@@ -46,6 +46,8 @@ interface PaginationOptions {
   date?: string;
   start_date?: string;
   end_date?: string;
+  team_filter?: string;
+  team_filter_user_id?: string | number;
 }
 
 @Injectable()
@@ -81,7 +83,19 @@ export class DonationBoxDonationService {
     scope: ResolvedDataScope,
     record: DonationBoxDonation,
   ): void {
-    this.dataScopeService.assertRecordAccess(scope, record);
+    // Treat collector as co-owner (same pattern as donor.assigned_to).
+    this.dataScopeService.assertRecordAccess(
+      scope,
+      {
+        created_by: record.created_by,
+        assigned_to:
+          record.collected_by ??
+          (record.collected_by_id != null
+            ? ({ id: record.collected_by_id } as any)
+            : null),
+      },
+      { useAssignedTo: true },
+    );
   }
 
   private toDonationBoxGeoRecord(box: DonationBox): DonationBoxGeoRecord {
@@ -95,14 +109,17 @@ export class DonationBoxDonationService {
   }
 
   /**
-   * When geographic territory filter is active, geo match on parent box governs access.
-   * Otherwise fall back to data scope (created_by).
+   * Data access (self/team/…) is always enforced.
+   * Geographic territory is an additional filter when active — it must not
+   * replace Access Scope (previously geo skipped data scope entirely).
    */
   assertCollectionViewAccess(
     dataScope: ResolvedDataScope,
     record: DonationBoxDonation,
     geoScope?: ResolvedGeographicScope | null,
   ): void {
+    this.assertCollectionRecordAccess(dataScope, record);
+
     if (
       geoScope &&
       this.geographicScopeService.isGeographicFilterActive(geoScope)
@@ -113,34 +130,32 @@ export class DonationBoxDonationService {
         !this.geographicScopeService.recordMatches(geoScope, "donation_box_donations", {
           donation_box: this.toDonationBoxGeoRecord(box),
           created_by: record.created_by,
+          collected_by: record.collected_by,
+          collected_by_id: record.collected_by_id,
         })
       ) {
         throw new ForbiddenException(
           "You do not have geographic access to this record",
         );
       }
-      return;
     }
-
-    this.assertCollectionRecordAccess(dataScope, record);
   }
 
+  /**
+   * Access Scope on created_by OR collected_by.
+   * Applied even when geographic filters are active (geo is additive).
+   */
   private applyCollectionListDataScope(
     query: SelectQueryBuilder<DonationBoxDonation>,
     dataScope: ResolvedDataScope | null,
-    geoScope?: ResolvedGeographicScope | null,
+    _geoScope?: ResolvedGeographicScope | null,
   ): void {
     if (!dataScope) return;
-    if (
-      geoScope &&
-      this.geographicScopeService.isGeographicFilterActive(geoScope)
-    ) {
-      return;
-    }
     this.dataScopeService.applyToQuery(
       query,
       "donation_box_donation",
       dataScope,
+      { assignedToColumn: "donation_box_donation.collected_by_id" },
     );
   }
 
@@ -409,6 +424,8 @@ export class DonationBoxDonationService {
         date = "",
         start_date,
         end_date,
+        team_filter,
+        team_filter_user_id,
       } = options;
 
       const skip = (page - 1) * pageSize;
@@ -481,7 +498,15 @@ export class DonationBoxDonationService {
       }
 
       if (currentUser?.id) {
-        const scope = await this.resolveCollectionScope(currentUser);
+        const scope = await this.dataScopeService.resolveListScope({
+          userId: currentUser.id,
+          userRole: currentUser.role,
+          userDepartment: currentUser.department,
+          permissionDepartment: "fund_raising",
+          module: "donation_box_donations",
+          teamFilter: team_filter,
+          teamFilterUserId: team_filter_user_id,
+        });
         this.applyCollectionListDataScope(query, scope, geoScope);
       }
 

@@ -53,6 +53,7 @@ import {
 } from "../../donations/donation-channel.constants";
 
 import { buildDonorGeoSearch } from "../donor/utils/donor-geo.util";
+import { DonorService } from "../donor/donor.service";
 
 
 
@@ -129,6 +130,8 @@ export class ReconciliationService {
     private readonly donationRepository: Repository<Donation>,
 
     private readonly reconciliationS3: ReconciliationS3Service,
+
+    private readonly donorService: DonorService,
 
   ) {}
 
@@ -1046,7 +1049,15 @@ export class ReconciliationService {
 
 
 
-    return this.donationRepository.save(donation);
+    const saved = await this.donationRepository.save(donation);
+    if (donorId) {
+      await this.donorService.advancePipelineOnDonationCompleted(donorId, {
+        donationId: saved.id,
+        amount,
+        currency: "PKR",
+      });
+    }
+    return saved;
 
   }
 

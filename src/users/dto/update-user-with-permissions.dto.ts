@@ -72,6 +72,12 @@ export class UpdateUserWithPermissionsDto {
   @IsNumber()
   manager_id?: number | null;
 
+  /** Multiple reporting managers (preferred). Merged with manager_id when both sent. */
+  @IsOptional()
+  @IsArray()
+  @IsNumber({}, { each: true })
+  manager_ids?: number[];
+
   @IsString()
   @IsOptional()
   password?: string;
