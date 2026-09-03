@@ -160,7 +160,7 @@ export class User {
   @Column({ name: "blood_group", nullable: true })
   blood_group: string;
 
-  // Geographic assignment fields (for fund_raising department)
+  // Geographic assignment fields (fund_raising / crd)
   @Column({
     name: "assigned_countries",
     type: "jsonb",
@@ -209,7 +209,7 @@ export class User {
   })
   assigned_routes: number[];
 
-  /** When true, fund_raising DMS geographic filters are not applied (permissions still apply). */
+  /** When true, geographic filters are not applied (permissions still apply). */
   @Column({ name: "geographic_off", type: "boolean", default: false })
   geographic_off: boolean;
 

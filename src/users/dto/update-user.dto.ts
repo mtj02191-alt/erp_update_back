@@ -70,7 +70,7 @@ export class UpdateUserDto {
   @IsOptional()
   password?: string;
 
-  // Geographic assignment fields (for fund_raising department)
+  // Geographic assignment fields (fund_raising / crd)
   @IsOptional()
   @IsArray()
   @IsNumber({}, { each: true })

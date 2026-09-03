@@ -6,7 +6,7 @@ import {
   SelectQueryBuilder,
   WhereExpressionBuilder,
 } from "typeorm";
-import { User, UserRole, Department } from "../../users/user.entity";
+import { User, UserRole } from "../../users/user.entity";
 import { City } from "../../dms/geographic/cities/entities/city.entity";
 import { Region } from "../../dms/geographic/regions/entities/region.entity";
 import { District } from "../../dms/geographic/districts/entities/district.entity";
@@ -14,7 +14,7 @@ import { Country } from "../../dms/geographic/countries/entities/country.entity"
 import { Route } from "../../dms/geographic/routes/entities/route.entity";
 import { Tehsil } from "../../dms/geographic/tehsils/entities/tehsil.entity";
 import { PermissionsService } from "../permissions.service";
-import { GEOGRAPHIC_DMS_DEPARTMENT } from "./geographic-scope.profiles";
+import { isGeographicAssignmentDepartment } from "./geographic-scope.profiles";
 import {
   DonationBoxGeoRecord,
   DonationGeoRecord,
@@ -207,8 +207,9 @@ export class GeographicScopeService {
   }
 
   /**
-   * Resolve a fund_raising user's geographic assignments into filter vocabulary.
-   * Returns bypass=true when geographic filtering must not be applied.
+   * Resolve a user's geographic assignments into filter vocabulary
+   * (Fund Raising + CRD). Returns bypass=true when geographic filtering
+   * must not be applied.
    *
    * @param entityKey When set, honors module `bypass_location` for that entity.
    */
@@ -250,7 +251,7 @@ export class GeographicScopeService {
       return emptyBypass("not_applicable");
     }
 
-    if (user.department !== Department.FUND_RAISING) {
+    if (!isGeographicAssignmentDepartment(user.department)) {
       return emptyBypass("not_applicable");
     }
 

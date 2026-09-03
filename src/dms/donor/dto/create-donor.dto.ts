@@ -9,6 +9,7 @@ import {
   IsDateString,
   IsInt,
   IsBoolean,
+  ValidateIf,
 } from "class-validator";
 import { Type } from "class-transformer";
 import { DonorType } from "../entities/donor.entity";
@@ -37,18 +38,20 @@ export class CreateDonorDto {
   @IsOptional()
   area_of_interest?: string;
 
+  @IsOptional()
+  @ValidateIf((_, v) => v != null && String(v).trim() !== "")
   @IsEmail()
-  @IsNotEmpty()
-  email: string;
+  email?: string;
 
   @IsString()
   @IsOptional()
   @MinLength(8, { message: "Password must be at least 8 characters long" })
   password?: string;
 
+  @IsOptional()
+  @ValidateIf((_, v) => v != null && String(v).trim() !== "")
   @IsString()
-  @IsNotEmpty()
-  phone: string;
+  phone?: string;
 
   @IsString()
   @IsOptional()

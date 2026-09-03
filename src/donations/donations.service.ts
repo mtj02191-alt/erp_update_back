@@ -252,28 +252,21 @@ export class DonationsService {
   }
 
   /**
-   * Data scope on created_by. Skipped when geographic territory filter is active
-   * (website donations have no created_by; offline rows are gated by geo instead).
-   * When a Team filter is active, always apply created_by (including online lists).
+   * Data scope on created_by (self / team / department).
+   * Online (website) rows usually skip ownership unless a Team filter is active
+   * (website donations are system-created). Offline always applies ownership.
+   * Geographic territory is applied separately and stacks with this (AND).
    */
   private applyDonationListDataScope(
     query: SelectQueryBuilder<Donation>,
     scope: ResolvedDataScope | null,
     listMode: "online" | "offline" | "both",
-    geoScope?: ResolvedGeographicScope | null,
+    _geoScope?: ResolvedGeographicScope | null,
     paramSuffix = "",
     teamFilterActive = false,
   ): void {
     if (!scope) return;
     if (scope.bypass || scope.type === "org" || scope.allowedUserIds == null) {
-      return;
-    }
-
-    if (
-      !teamFilterActive &&
-      geoScope &&
-      this.geographicScopeService.isGeographicFilterActive(geoScope)
-    ) {
       return;
     }
 

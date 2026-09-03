@@ -449,7 +449,8 @@ export class DonationBoxDonationService {
         .leftJoinAndSelect("donation_box_donation.donation_box", "donation_box")
         .leftJoinAndSelect("donation_box_donation.collected_by", "collected_by")
         .leftJoinAndSelect("donation_box_donation.verified_by", "verified_by")
-        .leftJoinAndSelect("donation_box.route", "route");
+        .leftJoinAndSelect("donation_box.route", "route")
+        .where("donation_box_donation.is_archived = false");
 
       // Apply common filters
       const filters: FilterPayload = {
@@ -589,7 +590,7 @@ export class DonationBoxDonationService {
   ): Promise<DonationBoxDonation[]> {
     try {
       return await this.donationBoxDonationRepository.find({
-        where: { donation_box_id: donationBoxId },
+        where: { donation_box_id: donationBoxId, is_archived: false },
         relations: ["donation_box", "collected_by", "verified_by"],
         order: { collection_date: "DESC" },
       });
@@ -826,7 +827,8 @@ export class DonationBoxDonationService {
         "collection.collection_date",
         "collection.status",
         "collection.donation_box_id",
-      ]);
+      ])
+      .where("collection.is_archived = false");
 
     if (options?.donationBoxId) {
       queryBuilder.andWhere("collection.donation_box_id = :donationBoxId", {

@@ -7,6 +7,9 @@ export const RECURRING_BILLING_START_DAY_OF_MONTH = "day_of_month";
 /** Minimum days between signup/payment and the next monthly reminder / billing date. */
 export const MIN_MONTHLY_RECURRING_GAP_DAYS = 20;
 
+/** Send monthly payment reminder this many days before the billing day (PKT). */
+export const MONTHLY_EARLY_REMINDER_DAYS = 2;
+
 export type RecurringBillingStartMode =
   | "same_date"
   | "first_of_month"
@@ -223,6 +226,66 @@ export function resolveSubscriptionBillingDayOfMonth(
   return getPktDayOfMonth();
 }
 
+/** PKT calendar date + N days as YYYY-MM-DD. */
+export function getPktYmdPlusDays(
+  days: number,
+  reference = new Date(),
+): string {
+  const pkt = new Date(
+    reference.toLocaleString("en-US", { timeZone: PKT_TIMEZONE }),
+  );
+  pkt.setDate(pkt.getDate() + Math.floor(Number(days) || 0));
+  return `${pkt.getFullYear()}-${String(pkt.getMonth() + 1).padStart(2, "0")}-${String(pkt.getDate()).padStart(2, "0")}`;
+}
+
+/** Monthly ledger period key (YYYY-MM) for a billing calendar date. */
+export function resolveMonthlyPeriodKeyForBillingYmd(
+  billingYmd: string,
+): string {
+  return String(billingYmd || "").trim().slice(0, 7);
+}
+
+/** Dedupe key for early monthly reminders (distinct from due-date reminder). */
+export function getMonthlyEarlyReminderDedupeKey(periodKey: string): string {
+  return `${periodKey}:early`;
+}
+
+/**
+ * Whether `billingYmd` is an eligible monthly billing date for this subscription
+ * (first billing date reached + min gap from signup).
+ */
+export function isSubscriptionBillingDateEligible(
+  subscription: Pick<
+    RecurringDonation,
+    "start_date_mode" | "start_date" | "created_at"
+  > | null | undefined,
+  billingYmd: string,
+  reference = new Date(),
+): boolean {
+  const trimmedBilling = String(billingYmd || "").trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmedBilling)) return false;
+
+  const startDate = String(subscription?.start_date || "").trim().slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(startDate) && trimmedBilling < startDate) {
+    return false;
+  }
+
+  if (subscription?.created_at) {
+    const daysSince = calendarDaysFromReferenceToYmd(
+      trimmedBilling,
+      new Date(subscription.created_at),
+    );
+    if (
+      Number.isFinite(daysSince) &&
+      daysSince < MIN_MONTHLY_RECURRING_GAP_DAYS
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 /**
  * True when today is this subscription's monthly billing day AND
  * at least {@link MIN_MONTHLY_RECURRING_GAP_DAYS} have passed since signup,
@@ -238,29 +301,35 @@ export function isSubscriptionBillingDayToday(
   const billingDay = resolveSubscriptionBillingDayOfMonth(subscription);
   if (getPktDayOfMonth(reference) !== billingDay) return false;
 
-  const todayYmd = getPktDateString(reference);
+  return isSubscriptionBillingDateEligible(
+    subscription,
+    getPktDateString(reference),
+    reference,
+  );
+}
 
-  // Do not remind before the first scheduled billing date
-  const startDate = String(subscription?.start_date || "").trim().slice(0, 10);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(startDate) && todayYmd < startDate) {
-    return false;
-  }
+/**
+ * True when today is {@link MONTHLY_EARLY_REMINDER_DAYS} before this
+ * subscription's monthly billing day (PKT) and the upcoming billing date is eligible.
+ */
+export function isSubscriptionEarlyBillingReminderDayToday(
+  subscription: Pick<
+    RecurringDonation,
+    "start_date_mode" | "start_date" | "created_at"
+  > | null | undefined,
+  reference = new Date(),
+  earlyDays: number = MONTHLY_EARLY_REMINDER_DAYS,
+): boolean {
+  const billingDay = resolveSubscriptionBillingDayOfMonth(subscription);
+  const upcomingBillingYmd = getPktYmdPlusDays(earlyDays, reference);
+  const upcomingDay = parseDayOfMonthFromStartDate(upcomingBillingYmd);
+  if (!upcomingDay || upcomingDay !== billingDay) return false;
 
-  // Always require min gap from subscription creation (covers same_date = today)
-  if (subscription?.created_at) {
-    const daysSince = calendarDaysFromReferenceToYmd(
-      todayYmd,
-      new Date(subscription.created_at),
-    );
-    if (
-      Number.isFinite(daysSince) &&
-      daysSince < MIN_MONTHLY_RECURRING_GAP_DAYS
-    ) {
-      return false;
-    }
-  }
-
-  return true;
+  return isSubscriptionBillingDateEligible(
+    subscription,
+    upcomingBillingYmd,
+    reference,
+  );
 }
 
 /** Normalize start_date for persistence from API payload. */

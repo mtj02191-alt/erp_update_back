@@ -37,7 +37,15 @@ import {
 } from "../campaigns/utils/campaign-communication.constants";
 import { CampaignTargetFrequency } from "../campaigns/utils/campaign-recurring.constants";
 import { RecurringDonationsLedgerService } from "../../donations/recurring_donations/recurring-donations-ledger.service";
-import { isSubscriptionBillingDayToday } from "../../donations/recurring_donations/recurring-billing-date.util";
+import {
+  getMonthlyEarlyReminderDedupeKey,
+  getPktDateString,
+  getPktYmdPlusDays,
+  isSubscriptionBillingDayToday,
+  isSubscriptionEarlyBillingReminderDayToday,
+  MONTHLY_EARLY_REMINDER_DAYS,
+  resolveMonthlyPeriodKeyForBillingYmd,
+} from "../../donations/recurring_donations/recurring-billing-date.util";
 import { isSubscriptionPrepaidPeriodCovered } from "../../donations/recurring_donations/recurring-prepaid.util";
 
 export interface ManualRecurringReminderDetail {
@@ -1264,10 +1272,9 @@ export class ManualRecurringReminderService {
         )?.[0] as CampaignTargetFrequency) ||
         CampaignTargetFrequency.MONTHLY;
 
-      const periodKey =
+      const defaultPeriodKey =
         options.period_key || getPeriodKeyForFrequency(frequency);
-      const reminderDedupeKey = getReminderDedupeKey(frequency, periodKey);
-      const periodBounds = options.period_key
+      const defaultPeriodBounds = options.period_key
         ? this.resolvePeriodBoundsFromKey(frequency, options.period_key)
         : getPeriodBoundsForFrequency(frequency);
 
@@ -1287,10 +1294,59 @@ export class ManualRecurringReminderService {
       for (const row of rows) {
         scanned += 1;
 
-        if (
-          billingInterval === "month" &&
-          !isSubscriptionBillingDayToday(row)
-        ) {
+        if (row.initial_donation_id) {
+          const initial = await this.donationRepo.findOne({
+            where: { id: row.initial_donation_id, is_archived: false },
+            select: ["id", "status"],
+          });
+          const initialStatus = String(initial?.status || "")
+            .trim()
+            .toLowerCase();
+          if (
+            !initial ||
+            !["completed", "paid", "success"].includes(initialStatus)
+          ) {
+            skipped += 1;
+            continue;
+          }
+        }
+
+        let reminderPhase: "early" | "due" | null = null;
+        let periodKey = defaultPeriodKey;
+        let reminderDedupeKey = getReminderDedupeKey(frequency, periodKey);
+        let periodBounds = defaultPeriodBounds;
+
+        if (billingInterval === "month") {
+          if (isSubscriptionEarlyBillingReminderDayToday(row)) {
+            reminderPhase = "early";
+          } else if (isSubscriptionBillingDayToday(row)) {
+            reminderPhase = "due";
+          } else {
+            skipped += 1;
+            continue;
+          }
+
+          const billingYmd =
+            reminderPhase === "early"
+              ? getPktYmdPlusDays(MONTHLY_EARLY_REMINDER_DAYS)
+              : getPktDateString();
+          periodKey = resolveMonthlyPeriodKeyForBillingYmd(billingYmd);
+          reminderDedupeKey =
+            reminderPhase === "early"
+              ? getMonthlyEarlyReminderDedupeKey(periodKey)
+              : getReminderDedupeKey(frequency, periodKey);
+          const billingRef = new Date(`${billingYmd}T12:00:00`);
+          periodBounds = options.period_key
+            ? this.resolvePeriodBoundsFromKey(frequency, options.period_key)
+            : getPeriodBoundsForFrequency(frequency, billingRef);
+        }
+
+        const installmentPaid =
+          await this.recurringLedgerService.hasCompletedInstallmentForPeriod(
+            row.id,
+            periodKey,
+          );
+        if (installmentPaid) {
           skipped += 1;
           continue;
         }
@@ -1352,6 +1408,11 @@ export class ManualRecurringReminderService {
           })
           .orderBy("d.id", "DESC")
           .getOne();
+
+        if (paidDonation && billingInterval === "month") {
+          skipped += 1;
+          continue;
+        }
 
         if (dryRun) {
           if (paidDonation) thanks_sent += 1;

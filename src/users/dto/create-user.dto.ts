@@ -83,7 +83,7 @@ export class CreateUserDto {
   @IsString()
   user_code?: string | null;
 
-  // Geographic assignment fields (for fund_raising department)
+  // Geographic assignment fields (fund_raising / crd)
   @IsOptional()
   @IsArray()
   @IsNumber({}, { each: true })

@@ -50,7 +50,7 @@ export class Donor extends BaseEntity {
   @Column({ nullable: true })
   area_of_interest: string;
 
-  @Column({ unique: true })
+  @Column({ unique: true, nullable: true })
   email: string;
 
   @Column({ nullable: true })
@@ -70,7 +70,7 @@ export class Donor extends BaseEntity {
   @Column({ type: "int", default: 0 })
   password_reveal_count: number;
 
-  @Column()
+  @Column({ nullable: true })
   phone: string;
 
   @Column({ nullable: true })

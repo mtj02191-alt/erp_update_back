@@ -383,7 +383,10 @@ export class DonorController {
       if (result && req?.user?.id) {
         await this.checkDonorPermission(req.user.id, result.source, "view");
         const geoScope = await this.resolveGeoScope(req.user);
-        const scope = await this.donorService.resolveDonorScope(req.user);
+        const scope = await this.donorService.resolveDonorScope(
+          req.user,
+          result.source,
+        );
         this.donorService.assertDonorViewAccess(scope, result, geoScope);
       }
       return res.status(HttpStatus.OK).json({
@@ -416,7 +419,10 @@ export class DonorController {
       const user = req?.user ?? null;
       if (user?.id) {
         const geoScope = await this.resolveGeoScope(user);
-        const scope = await this.donorService.resolveDonorScope(user);
+        const scope = await this.donorService.resolveDonorScope(
+          user,
+          existing.source,
+        );
         this.donorService.assertDonorViewAccess(scope, existing, geoScope);
         await this.checkDonorPermission(user.id, existing.source, "view");
       }
@@ -455,7 +461,10 @@ export class DonorController {
       const user = req?.user ?? null;
       if (user?.id) {
         const geoScope = await this.resolveGeoScope(user);
-        const scope = await this.donorService.resolveDonorScope(user);
+        const scope = await this.donorService.resolveDonorScope(
+          user,
+          existing.source,
+        );
         this.donorService.assertDonorViewAccess(scope, existing, geoScope);
         await this.checkDonorPermission(user.id, existing.source, "update");
       }
@@ -493,7 +502,10 @@ export class DonorController {
       const user = req?.user ?? null;
       if (user?.id) {
         const geoScope = await this.resolveGeoScope(user);
-        const scope = await this.donorService.resolveDonorScope(user);
+        const scope = await this.donorService.resolveDonorScope(
+          user,
+          existing.source,
+        );
         this.donorService.assertDonorViewAccess(scope, existing, geoScope);
         await this.checkDonorPermission(user.id, existing.source, "view");
       }
@@ -531,7 +543,10 @@ export class DonorController {
       const user = req?.user ?? null;
       if (user?.id) {
         const geoScope = await this.resolveGeoScope(user);
-        const scope = await this.donorService.resolveDonorScope(user);
+        const scope = await this.donorService.resolveDonorScope(
+          user,
+          result.source,
+        );
         this.donorService.assertDonorViewAccess(scope, result, geoScope);
         await this.checkDonorPermission(user.id, result.source, "view");
       }
@@ -569,7 +584,10 @@ export class DonorController {
       const user = req?.user ?? null;
       if (user?.id) {
         const geoScope = await this.resolveGeoScope(user);
-        const scope = await this.donorService.resolveDonorScope(user);
+        const scope = await this.donorService.resolveDonorScope(
+          user,
+          existing.source,
+        );
         this.donorService.assertDonorViewAccess(scope, existing, geoScope);
         await this.checkDonorPermission(user.id, existing.source, "update");
       }
@@ -603,7 +621,10 @@ export class DonorController {
       const user = req?.user ?? null;
       if (user?.id) {
         const geoScope = await this.resolveGeoScope(user);
-        const scope = await this.donorService.resolveDonorScope(user);
+        const scope = await this.donorService.resolveDonorScope(
+          user,
+          existing.source,
+        );
         this.donorService.assertDonorViewAccess(scope, existing, geoScope);
         await this.checkDonorPermission(user.id, existing.source, "delete");
       }
@@ -642,7 +663,10 @@ export class DonorController {
       const user = req?.user ?? null;
       if (user?.id) {
         const geoScope = await this.resolveGeoScope(user);
-        const scope = await this.donorService.resolveDonorScope(user);
+        const scope = await this.donorService.resolveDonorScope(
+          user,
+          existing.source,
+        );
         this.donorService.assertDonorViewAccess(scope, existing, geoScope);
         await this.checkDonorPermission(user.id, existing.source, "update");
       }
@@ -696,7 +720,10 @@ export class DonorController {
       const donor = await this.donorService.findOne(donorId);
       if (req?.user?.id) {
         const geoScope = await this.resolveGeoScope(req.user);
-        const scope = await this.donorService.resolveDonorScope(req.user);
+        const scope = await this.donorService.resolveDonorScope(
+          req.user,
+          donor.source,
+        );
         this.donorService.assertDonorViewAccess(scope, donor, geoScope);
         await this.checkDonorPermission(req.user.id, donor.source, "view");
       }
@@ -745,7 +772,10 @@ export class DonorController {
       const donor = await this.donorService.findOne(donorId);
       if (req?.user?.id) {
         const geoScope = await this.resolveGeoScope(req.user);
-        const scope = await this.donorService.resolveDonorScope(req.user);
+        const scope = await this.donorService.resolveDonorScope(
+          req.user,
+          donor.source,
+        );
         this.donorService.assertDonorViewAccess(scope, donor, geoScope);
         await this.checkDonorPermission(req.user.id, donor.source, "update");
       }

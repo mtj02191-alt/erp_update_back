@@ -297,6 +297,43 @@ export class TasksService {
     return full || u.email || null;
   }
 
+  private assertTaskMutationAllowed(
+    task: Task,
+    currentUser: User,
+    operation: "update" | "delete",
+    perms?: { canUpdate?: boolean; canDelete?: boolean },
+  ): void {
+    const userId = Number(currentUser.id);
+    const role = String(currentUser.role || "").toLowerCase();
+    const isAdminRole =
+      role === UserRole.SUPER_ADMIN.toLowerCase() ||
+      role === UserRole.ADMIN.toLowerCase();
+    const isCreator =
+      task.created_by_id != null && Number(task.created_by_id) === userId;
+    const assignedIds = Array.isArray(task.assigned_user_ids)
+      ? task.assigned_user_ids.map((v) => Number(v)).filter((v) => !isNaN(v))
+      : [];
+    const metaIds = Array.isArray(task.assigned_users_meta)
+      ? task.assigned_users_meta
+          .map((meta: any) => (meta && meta.user_id != null ? Number(meta.user_id) : null))
+          .filter((v) => v !== null && !isNaN(v))
+      : [];
+    const isAssignee = [...assignedIds, ...metaIds].includes(userId);
+
+    if (isAdminRole || isCreator) {
+      return;
+    }
+
+
+    const requiredPermission =
+      operation === "delete" ? perms?.canDelete : perms?.canUpdate;
+    if (!requiredPermission) {
+      throw new ForbiddenException(
+        `Insufficient permissions to ${operation} this task.`,
+      );
+    }
+  }
+
   private async getTaskScope(
     user: User,
   ): Promise<"org" | "department" | "team" | "self"> {
@@ -1100,6 +1137,7 @@ export class TasksService {
       let assignedToMeCount = 0;
       let assignedToTeamCount = 0;
       let otherTasksCount = 0;
+      let approvalTasksCount = 0;
 
       // Create a separate query builder for counts (without pagination)
       const countQb = this.taskRepo.createQueryBuilder("task");
@@ -1214,6 +1252,14 @@ export class TasksService {
           currentUserId: currentUser.id,
         });
         otherTasksCount = await otherTasksQb.getCount();
+
+        // Calculate approval_tasks count (where current user is required approver)
+        const approvalTasksQb = countQb.clone();
+        approvalTasksQb.andWhere(
+          "task.approval_required_user_ids @> ARRAY[:currentUserId]::int[]",
+          { currentUserId: currentUser.id },
+        );
+        approvalTasksCount = await approvalTasksQb.getCount();
       }
 
       return {
@@ -1230,6 +1276,7 @@ export class TasksService {
           assigned_to_me: assignedToMeCount,
           assigned_to_team: assignedToTeamCount,
           other_tasks: otherTasksCount,
+          approval_tasks: approvalTasksCount,
         },
       };
     } catch (e) {
@@ -2066,6 +2113,29 @@ export class TasksService {
   ): Promise<Task> {
     try {
       const task = await this.findOne(id, currentUser, { filterMov: false });
+      const perms = await this.getTaskPermissionsForUser(currentUser);
+
+      const assignedIds = Array.isArray(task.assigned_user_ids)
+        ? task.assigned_user_ids.map((v) => Number(v)).filter((v) => !isNaN(v))
+        : [];
+      const metaIds = Array.isArray(task.assigned_users_meta)
+        ? task.assigned_users_meta
+            .map((meta: any) =>
+              meta && meta.user_id != null ? Number(meta.user_id) : null,
+            )
+            .filter((v) => v !== null && !isNaN(v as number))
+        : [];
+      const isCurrentUserAssignee = [...assignedIds, ...metaIds].includes(
+        Number(currentUser.id),
+      );
+      const isApprovalSubmission =
+        dto.status === TaskStatus.PENDING_APPROVAL &&
+        task.workflow_type === TaskWorkflowType.APPROVAL_REQUIRED &&
+        isCurrentUserAssignee;
+
+      if (!isApprovalSubmission) {
+        this.assertTaskMutationAllowed(task, currentUser, "update", perms);
+      }
       // If user is trying to CLOSE a COMPLETED task, allow it if they are the creator or reporter
       if (
         task.status === TaskStatus.COMPLETED &&
@@ -3558,6 +3628,8 @@ export class TasksService {
   async remove(id: number, currentUser: User): Promise<{ deleted: boolean }> {
     try {
       const task = await this.findOne(id, currentUser);
+      const perms = await this.getTaskPermissionsForUser(currentUser);
+      this.assertTaskMutationAllowed(task, currentUser, "delete", perms);
       await this.deleteDueRemindersForTask(task.id);
       await this.taskRepo.delete(task.id);
       return { deleted: true };
